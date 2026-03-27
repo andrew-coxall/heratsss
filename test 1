@@ -2,10 +2,9 @@ import random
 import tkinter as tk
 from tkinter import messagebox
 
-# --- Logic Classes (Your original code, slightly modified for the UI) ---
-
+# --- 1. LOGIC ---
 class User:
-    def __init__(self, name, initial_balance=1000):
+    def __init__(self, name, initial_balance=2000):
         self.name = name
         self.balance = initial_balance
 
@@ -18,73 +17,134 @@ class User:
             return True
         return False
 
-# --- GUI Application ---
+# --- 2. THE MAIN CONTROLLER ---
+class SwiftPayApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("SwiftPay Mobile")
+        self.geometry("400x700")
+        self.configure(bg="#121212")
+        
+        self.user = User(name="Alice")
+        
+        self.container = tk.Frame(self)
+        self.container.pack(side="top", fill="both", expand=True)
+        self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_columnconfigure(0, weight=1)
 
-class FinanceApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Alice's Finance Simulator")
-        self.root.geometry("400x450")
-        
-        # Initialize Logic
-        self.user = User(name="Alice", initial_balance=2000)
-        
-        # UI Elements
-        self.label_name = tk.Label(root, text=f"User: {self.user.name}", font=("Arial", 14, "bold"))
-        self.label_name.pack(pady=10)
+        self.frames = {}
+        for F in (LoginPage, DashboardPage):
+            page_name = F.__name__
+            frame = F(parent=self.container, controller=self)
+            self.frames[page_name] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
 
-        self.balance_var = tk.StringVar()
-        self.balance_var.set(f"Balance: ${self.user.balance:.2f}")
+        self.show_frame("LoginPage")
+
+    def show_frame(self, page_name):
+        frame = self.frames[page_name]
+        frame.tkraise()
+
+# --- 3. LOGIN PAGE ---
+class LoginPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#121212")
+        self.controller = controller
+
+        tk.Label(self, text="SwiftPay", fg="#00D084", bg="#121212", font=("Helvetica", 40, "bold")).pack(pady=(100, 10))
+        tk.Label(self, text="Enter PIN to continue", fg="#666", bg="#121212").pack()
         
-        self.label_balance = tk.Label(root, textvariable=self.balance_var, font=("Arial", 18), fg="green")
-        self.label_balance.pack(pady=10)
+        self.pin_entry = tk.Entry(self, show="●", justify="center", font=("Helvetica", 30), bg="#1E1E1E", fg="white", bd=0, insertbackground="white")
+        self.pin_entry.pack(pady=30, padx=60, ipady=10)
+        self.pin_entry.insert(0, "1234")
+
+        # Styled Login Button
+        btn = tk.Frame(self, bg="#00D084", cursor="hand2")
+        btn.pack(pady=20, padx=80, fill="x")
+        lbl = tk.Label(btn, text="LOG IN", fg="black", bg="#00D084", font=("Helvetica", 12, "bold"), pady=15)
+        lbl.pack()
+        btn.bind("<Button-1>", lambda e: self.check_login())
+        lbl.bind("<Button-1>", lambda e: self.check_login())
+
+    def check_login(self):
+        if self.pin_entry.get() == "1234":
+            self.controller.show_frame("DashboardPage")
+        else:
+            messagebox.showerror("Error", "Try PIN: 1234")
+
+# --- 4. DASHBOARD PAGE (The New Code You Asked About) ---
+class DashboardPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#121212")
+        self.controller = controller
+        self.user = controller.user
+
+        # Header
+        tk.Label(self, text=f"Welcome back, {self.user.name}", fg="#888", bg="#121212", font=("Helvetica", 10)).pack(pady=(30, 0))
+
+        # Balance Card
+        card = tk.Frame(self, bg="#1E1E1E", padx=20, pady=30, highlightthickness=1, highlightbackground="#333")
+        card.pack(padx=25, pady=20, fill="x")
+        
+        tk.Label(card, text="AVAILABLE TO CASH OUT", fg="#00D084", bg="#1E1E1E", font=("Helvetica", 8, "bold")).pack()
+        self.balance_var = tk.StringVar(value=f"${self.user.balance:,.2f}")
+        tk.Label(card, textvariable=self.balance_var, fg="white", bg="#1E1E1E", font=("Helvetica", 36, "bold")).pack()
+
+        # Input Section
+        tk.Label(self, text="Set Amount", fg="#AAA", bg="#121212", font=("Helvetica", 9, "bold")).pack(pady=(10, 5))
+        self.amount_entry = tk.Entry(self, justify="center", font=("Helvetica", 20), bg="#000", fg="#00D084", borderwidth=0, insertbackground="white")
+        self.amount_entry.insert(0, "100")
+        self.amount_entry.pack(pady=5, padx=60, ipady=10)
 
         # Buttons
-        tk.Button(root, text="Buy Now Pay Later ($150)", width=25, command=self.do_bnpl).pack(pady=5)
-        tk.Button(root, text="Take Payday Loan ($300)", width=25, command=self.do_loan).pack(pady=5)
-        tk.Button(root, text="Gamble ($100)", width=25, command=self.do_gamble, bg="orange").pack(pady=5)
-        tk.Button(root, text="Reset Balance", width=25, command=self.reset).pack(pady=20)
+        self.create_modern_btn("Transfer to Bank", "#7042F4", self.do_loan)
+        self.create_modern_btn("Buy Now, Pay Later", "#333333", self.do_bnpl)
+        self.create_modern_btn("Instant Gamble", "#FF4500", self.do_gamble)
+
+        # Sign Out
+        tk.Button(self, text="Secure Sign Out", command=lambda: controller.show_frame("LoginPage"), 
+                  bg="#121212", fg="#555", bd=0, font=("Helvetica", 9, "underline")).pack(side="bottom", pady=20)
+
+    def create_modern_btn(self, text, color, cmd):
+        f = tk.Frame(self, bg=color, cursor="hand2")
+        f.pack(pady=8, padx=40, fill="x")
+        l = tk.Label(f, text=text, fg="white", bg=color, font=("Helvetica", 11, "bold"), pady=15)
+        l.pack()
+        f.bind("<Button-1>", lambda e: cmd())
+        l.bind("<Button-1>", lambda e: cmd())
 
     def update_ui(self):
-        self.balance_var.set(f"Balance: ${self.user.balance:.2f}")
-
-    def do_bnpl(self):
-        cost = 150
-        installment = cost / 3
-        if self.user.withdraw(installment):
-            messagebox.showinfo("Success", f"BNPL Started! First installment of ${installment:.2f} paid.")
-            self.update_ui()
-        else:
-            messagebox.showwarning("Failed", "Insufficient funds for BNPL installment.")
+        self.balance_var.set(f"${self.user.balance:,.2f}")
 
     def do_loan(self):
-        amount = 300
-        fee = amount * 0.1
-        if self.user.withdraw(fee):
-            self.user.deposit(amount)
-            messagebox.showinfo("Loan Approved", f"Loan of ${amount} received! Fee of ${fee} deducted.")
+        try:
+            amt = float(self.amount_entry.get())
+            self.user.deposit(amt)
             self.update_ui()
-        else:
-            messagebox.showwarning("Failed", "You don't have enough to cover the loan fee.")
+            messagebox.showinfo("SwiftPay", f"${amt} Transfer initiated!")
+        except: pass
+
+    def do_bnpl(self):
+        try:
+            amt = float(self.amount_entry.get())
+            if self.user.withdraw(amt/4):
+                self.update_ui()
+                messagebox.showinfo("BNPL", "Plan Created!")
+        except: pass
 
     def do_gamble(self):
-        bet = 100
-        if self.user.withdraw(bet):
-            if random.choice([True, False]):
-                winnings = bet * 2
-                self.user.deposit(winnings)
-                messagebox.showinfo("Winner!", f"You won ${winnings}!")
-            else:
-                messagebox.showerror("Loser", "Better luck next time!")
-            self.update_ui()
-        else:
-            messagebox.showwarning("Failed", "Not enough money to bet.")
+        try:
+            amt = float(self.amount_entry.get())
+            if self.user.withdraw(amt):
+                if random.random() > 0.5:
+                    self.user.deposit(amt * 2)
+                    messagebox.showinfo("Winner!", "Doubled your money!")
+                else:
+                    messagebox.showerror("Lost", "Try again!")
+                self.update_ui()
+        except: pass
 
-    def reset(self):
-        self.user.balance = 2000
-        self.update_ui()
-
+# --- 5. RUN ---
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = FinanceApp(root)
-    root.mainloop()
+    app = SwiftPayApp()
+    app.mainloop()
