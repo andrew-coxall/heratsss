@@ -1,13 +1,14 @@
 import random
+import tkinter as tk
+from tkinter import messagebox
+
+# --- Logic Classes (Your original code, slightly modified for the UI) ---
 
 class User:
-    def __init__(self, name):
+    def __init__(self, name, initial_balance=1000):
         self.name = name
-        self.balance = 1000  # Initial balance for the user
+        self.balance = initial_balance
 
-    def get_balance(self):
-        return self.balance
-    
     def deposit(self, amount):
         self.balance += amount
         
@@ -15,98 +16,75 @@ class User:
         if self.balance >= amount:
             self.balance -= amount
             return True
+        return False
+
+# --- GUI Application ---
+
+class FinanceApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Alice's Finance Simulator")
+        self.root.geometry("400x450")
+        
+        # Initialize Logic
+        self.user = User(name="Alice", initial_balance=2000)
+        
+        # UI Elements
+        self.label_name = tk.Label(root, text=f"User: {self.user.name}", font=("Arial", 14, "bold"))
+        self.label_name.pack(pady=10)
+
+        self.balance_var = tk.StringVar()
+        self.balance_var.set(f"Balance: ${self.user.balance:.2f}")
+        
+        self.label_balance = tk.Label(root, textvariable=self.balance_var, font=("Arial", 18), fg="green")
+        self.label_balance.pack(pady=10)
+
+        # Buttons
+        tk.Button(root, text="Buy Now Pay Later ($150)", width=25, command=self.do_bnpl).pack(pady=5)
+        tk.Button(root, text="Take Payday Loan ($300)", width=25, command=self.do_loan).pack(pady=5)
+        tk.Button(root, text="Gamble ($100)", width=25, command=self.do_gamble, bg="orange").pack(pady=5)
+        tk.Button(root, text="Reset Balance", width=25, command=self.reset).pack(pady=20)
+
+    def update_ui(self):
+        self.balance_var.set(f"Balance: ${self.user.balance:.2f}")
+
+    def do_bnpl(self):
+        cost = 150
+        installment = cost / 3
+        if self.user.withdraw(installment):
+            messagebox.showinfo("Success", f"BNPL Started! First installment of ${installment:.2f} paid.")
+            self.update_ui()
         else:
-            print("Insufficient funds.")
-            return False
+            messagebox.showwarning("Failed", "Insufficient funds for BNPL installment.")
 
-
-class BuyNowPayLater:
-    def __init__(self, user):
-        self.user = user
-    
-    def buy_now_pay_later(self, cost, installment_months=3):
-        if self.user.withdraw(cost / installment_months):
-            print(f"Bought for {cost} with {installment_months} months to pay later.")
-            return True
+    def do_loan(self):
+        amount = 300
+        fee = amount * 0.1
+        if self.user.withdraw(fee):
+            self.user.deposit(amount)
+            messagebox.showinfo("Loan Approved", f"Loan of ${amount} received! Fee of ${fee} deducted.")
+            self.update_ui()
         else:
-            return False
+            messagebox.showwarning("Failed", "You don't have enough to cover the loan fee.")
 
-
-class PaydayLoan:
-    def __init__(self, user):
-        self.user = user
-    
-    def take_loan(self, amount):
-        loan_fee = 0.1 * amount  # Assume a 10% fee on the loan amount
-        if self.user.withdraw(loan_fee):  # User pays the fee upfront
-            print(f"Loan of {amount} taken with fee of {loan_fee}.")
-            return True
-        else:
-            return False
-
-
-class Gambling:
-    def __init__(self, user):
-        self.user = user
-    
-    def gamble(self, amount):
-        if self.user.withdraw(amount):  # User bets the amount
-            result = random.choice([True, False])  # Randomly decide whether to win or lose
-            if result:
-                winnings = amount * 2  # Double the bet as a reward
-                print(f"Congratulations! You won {winnings}.")
+    def do_gamble(self):
+        bet = 100
+        if self.user.withdraw(bet):
+            if random.choice([True, False]):
+                winnings = bet * 2
                 self.user.deposit(winnings)
-                return True
+                messagebox.showinfo("Winner!", f"You won ${winnings}!")
             else:
-                print("Sorry, you lost.")
-                return False
+                messagebox.showerror("Loser", "Better luck next time!")
+            self.update_ui()
         else:
-            print("Insufficient funds for gambling.")
-            return False
+            messagebox.showwarning("Failed", "Not enough money to bet.")
 
-
-# Example usage
+    def reset(self):
+        self.user.balance = 2000
+        self.update_ui()
 
 if __name__ == "__main__":
-    user = User(name="Alice")
-
-    buy_now_pay_later_service = BuyNowPayLater(user)
-    payday_loan_service = PaydayLoan(user)
-    gambling_service = Gambling(user)
-
-    # Deposit some money
-    user.deposit(2000)  # Alice has now $2000
-
-    print(f"Current Balance: {user.get_balance()}")
-
-    # Buy Now Pay Later Transaction
-    if buy_now_pay_later_service.buy_now_pay_later(cost=150):
-        print("Buy Now Pay Later transaction successful.")
-    
-    print(f"After BNPL, Current Balance: {user.get_balance()}")
-
-    # Take a payday loan
-    if payday_loan_service.take_loan(amount=300):
-        print("Payday Loan taken successfully.")
-    
-    print(f"Current Balance after Loan: {user.get_balance()}")
-
-    # Gamble some money
-    if gambling_service.gamble(100):
-        print("Gambled and won!")
-    else:
-        print("Lost the gamble.")
-
-    print(f"After Gambling, Current Balance: {user.get_balance()}")
-```
-
-### Explanation:
-
-- **User Class**: Holds user information and manages their balance.
-- **BuyNowPayLater Class**: Facilitates buy now pay later transactions by breaking down costs into installments.
-- **PaydayLoan Class**: Handles payday loans with a fee.
-- **Gambling Class**: Simulates basic gambling (slot machine style) where the user can win or lose.
-
-### Running the Code
-When you run this script, it will simulate Alice making various financial actions and display the results. You can adjust the values 
-as needed to fit your specific requirements.
+    root = tk.Tk()
+    app = FinanceApp(root)
+    root.mainloop()
