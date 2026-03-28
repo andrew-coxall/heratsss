@@ -1,7 +1,3 @@
-"""
-SwiftPay — Dark Patterns Research Demo
-UX/Security Research Paper · Not a real financial product
-"""
 import random
 import tkinter as tk
 from tkinter import messagebox, ttk
