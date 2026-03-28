@@ -26,7 +26,7 @@ class SwiftPayApp(tk.Tk):
         super().__init__()
         self.title("SwiftPay")
         self.geometry("400x760")
-        self.resizable(False, False)
+        self.resizable(True, True)
         self.configure(bg="#0D0D0D")
 
         self.user = User()
@@ -34,6 +34,1072 @@ class SwiftPayApp(tk.Tk):
         self.container = tk.Frame(self, bg="#0D0D0D")
         self.container.pack(fill="both", expand=True)
         self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+        for F in (LoginPage, DashboardPage):
+            f = F(parent=self.container, controller=self)
+            self.frames[F.__name__] = f
+            f.grid(row=0, column=0, sticky="nsew")
+
+        self.show_frame("LoginPage")
+
+    def show_frame(self, name):
+        self.frames[name].tkraise()
+
+    @staticmethod
+    def make_modal(root, w=390, h=700, title="SwiftPay"):
+        win = tk.Toplevel(root)
+        win.geometry(f"{w}x{h}")
+        win.resizable(False, False)
+        win.configure(bg="#0D0D0D")
+        win.transient(root)
+        win.grab_set()
+        bar = tk.Frame(win, bg="#161616", pady=13)
+        bar.pack(fill="x")
+        tk.Label(bar, text=title, fg="#FFFFFF", bg="#161616",
+                 font=("Helvetica", 13, "bold")).pack()
+        return win
+
+    @staticmethod
+    def flat_btn(parent, text, bg, fg, cmd, pady=14, font_size=12):
+        f = tk.Frame(parent, bg=bg, cursor="hand2")
+        f.pack(pady=6, padx=30, fill="x")
+        l = tk.Label(f, text=text, fg=fg, bg=bg,
+                     font=("Helvetica", font_size, "bold"), pady=pady)
+        l.pack()
+        for w in (f, l):
+            w.bind("<Button-1>", lambda e, c=cmd: c())
+        return f
+
+# ═══════════════════════════════════════════════════════════════
+#  3. LOGIN PAGE
+# ═══════════════════════════════════════════════════════════════
+class LoginPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#0D0D0D")
+        self.controller = controller
+
+        tk.Label(self, text="SwiftPay", fg="#00D47E", bg="#0D0D0D",
+                 font=("Helvetica", 44, "bold")).pack(pady=(90, 4))
+        tk.Label(self, text="Your money, when you need it.",
+                 fg="#555", bg="#0D0D0D", font=("Helvetica", 11)).pack()
+
+        self.pin = tk.Entry(self, show="●", justify="center",
+                            font=("Helvetica", 28), bg="#1A1A1A", fg="white",
+                            bd=0, insertbackground="white",
+                            highlightthickness=1, highlightcolor="#333")
+        self.pin.pack(pady=34, padx=50, ipady=12)
+        self.pin.insert(0, "1234")
+
+        SwiftPayApp.flat_btn(self, "Sign In", "#00D47E", "#000",
+                             self._login, font_size=13)
+
+        # Membership auto-enrol in near-invisible fine print
+        tk.Label(self, wraplength=320,
+                 text="By signing in you agree to SwiftPay's Terms of Service "
+                      "and authorize a $1.99/month SwiftPay+ membership "
+                      "charged to your linked account. Cancel anytime in "
+                      "Settings > Membership.",
+                 fg="#1A1A1A", bg="#0D0D0D",
+                 font=("Helvetica", 6)).pack(side="bottom", pady=12)
+
+    def _login(self):
+        if self.pin.get() == "1234":
+            self.controller.show_frame("DashboardPage")
+            self.controller.frames["DashboardPage"]._start_notification_drip()
+        else:
+            messagebox.showerror("", "Incorrect PIN  (hint: 1234)")
+
+# ═══════════════════════════════════════════════════════════════
+#  4. DASHBOARD
+# ═══════════════════════════════════════════════════════════════
+class DashboardPage(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent, bg="#0D0D0D")
+        self.controller   = controller
+        self.user         = controller.user
+        self.current_tip  = 0
+        self.hands_played = 0
+        self.session_pnl  = 0.0
+
+        # Toast bar
+        self.toast = tk.Label(self, text="", fg="white", bg="#00D47E",
+                              font=("Helvetica", 10, "bold"), pady=7)
+        self.toast.pack(fill="x")
+        self.toast.pack_forget()
+
+        # Scrollable body
+        canvas = tk.Canvas(self, bg="#0D0D0D", highlightthickness=0)
+        sb = tk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        self.body = tk.Frame(canvas, bg="#0D0D0D")
+        cw = canvas.create_window((0, 0), window=self.body, anchor="nw")
+        self.body.bind("<Configure>",
+                       lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfig(cw, width=e.width))
+
+        self._build_header()
+        self._build_swift_score()
+        self._build_balance_card()
+        self._build_action_buttons()
+        self._build_activity_feed()
+        self._build_bottom_nav()
+
+    # ── HEADER ──────────────────────────────────────────────
+    def _build_header(self):
+        h = tk.Frame(self.body, bg="#0D0D0D")
+        h.pack(fill="x", padx=20, pady=(16, 6))
+        tk.Label(h, text=f"Hi, {self.user.name} 👋",
+                 fg="#888", bg="#0D0D0D", font=("Helvetica", 11)).pack(side="left")
+        bell = tk.Label(h, text="🔔", bg="#0D0D0D",
+                        font=("Helvetica", 16), cursor="hand2")
+        bell.pack(side="right")
+        bell.bind("<Button-1>", lambda e: self._show_notification_center())
+
+    # ── SWIFTSCORE — gamified nudge to borrow more ───────────
+    def _build_swift_score(self):
+        card = tk.Frame(self.body, bg="#161616",
+                        highlightthickness=1, highlightbackground="#222")
+        card.pack(fill="x", padx=20, pady=6)
+        inner = tk.Frame(card, bg="#161616", padx=16, pady=14)
+        inner.pack(fill="x")
+
+        left = tk.Frame(inner, bg="#161616")
+        left.pack(side="left")
+        tk.Label(left, text="SwiftScore™", fg="#00D47E", bg="#161616",
+                 font=("Helvetica", 9, "bold")).pack(anchor="w")
+        self.score_var = tk.StringVar(value=str(self.user.swift_score))
+        tk.Label(left, textvariable=self.score_var, fg="white", bg="#161616",
+                 font=("Helvetica", 28, "bold")).pack(anchor="w")
+        tk.Label(left, text="Fair  ·  Keep borrowing to improve →",
+                 fg="#555", bg="#161616", font=("Helvetica", 8)).pack(anchor="w")
+
+        bar_bg = tk.Frame(inner, bg="#222", height=6, width=160)
+        bar_bg.pack(side="right", padx=(0, 4))
+        bar_bg.pack_propagate(False)
+        fill_w = int(160 * (self.user.swift_score - 300) / 550)
+        tk.Frame(bar_bg, bg="#00D47E", height=6, width=fill_w).place(x=0, y=0)
+
+    # ── BALANCE CARD — advertises $500, delivers $25 ─────────
+    def _build_balance_card(self):
+        card = tk.Frame(self.body, bg="#161616",
+                        highlightthickness=1, highlightbackground="#222")
+        card.pack(fill="x", padx=20, pady=6)
+        inner = tk.Frame(card, bg="#161616", padx=20, pady=22)
+        inner.pack(fill="x")
+
+        tk.Label(inner, text="AVAILABLE TO CASH OUT",
+                 fg="#00D47E", bg="#161616",
+                 font=("Helvetica", 8, "bold")).pack()
+        tk.Label(inner, text="Up to $500", fg="white", bg="#161616",
+                 font=("Helvetica", 38, "bold")).pack()
+        tk.Label(inner, text="No interest  ·  No credit check  ·  Instant",
+                 fg="#444", bg="#161616", font=("Helvetica", 9)).pack(pady=(2, 8))
+
+        self.balance_var = tk.StringVar(value=f"${self.user.balance:,.2f}")
+        row = tk.Frame(inner, bg="#161616"); row.pack()
+        tk.Label(row, text="Bank balance: ", fg="#555", bg="#161616",
+                 font=("Helvetica", 9)).pack(side="left")
+        tk.Label(row, textvariable=self.balance_var, fg="#888", bg="#161616",
+                 font=("Helvetica", 9, "bold")).pack(side="left")
+
+        if self.user.streak > 0:
+            tk.Label(inner,
+                     text=f"🔥 {self.user.streak}-repayment streak — eligible for higher limits!",
+                     fg="#FF8C00", bg="#161616",
+                     font=("Helvetica", 8)).pack(pady=(6, 0))
+
+    # ── ACTION BUTTONS ───────────────────────────────────────
+    def _build_action_buttons(self):
+        pad = tk.Frame(self.body, bg="#0D0D0D")
+        pad.pack(fill="x", padx=20, pady=10)
+
+        tk.Label(pad, text="Amount", fg="#666", bg="#0D0D0D",
+                 font=("Helvetica", 9, "bold")).pack(anchor="w", pady=(0, 4))
+        self.amount_entry = tk.Entry(
+            pad, justify="center", font=("Helvetica", 22),
+            bg="#1A1A1A", fg="#00D47E", bd=0, insertbackground="white",
+            highlightthickness=1, highlightbackground="#333")
+        self.amount_entry.insert(0, "100")
+        self.amount_entry.pack(fill="x", ipady=10, pady=(0, 10))
+
+        SwiftPayApp.flat_btn(pad, "⚡  Get Cash Now",   "#00D47E", "#000",
+                             self.do_loan, font_size=13)
+        SwiftPayApp.flat_btn(pad, "Buy Now, Pay Later", "#1A1A1A", "#AAA",
+                             self.do_bnpl, font_size=11)
+        SwiftPayApp.flat_btn(pad, "🎰  SwiftPay Casino", "#1A0A0A", "#FF4500",
+                             self.do_gamble, font_size=11)
+
+        # Referral banner
+        ref = tk.Frame(self.body, bg="#0F1A12",
+                       highlightthickness=1, highlightbackground="#1A3A22")
+        ref.pack(fill="x", padx=20, pady=4)
+        ri = tk.Frame(ref, bg="#0F1A12", padx=16, pady=12, cursor="hand2")
+        ri.pack(fill="x")
+        tk.Label(ri, text="🎁  Invite friends, earn $10 each",
+                 fg="#00D47E", bg="#0F1A12",
+                 font=("Helvetica", 10, "bold")).pack(anchor="w")
+        tk.Label(ri, text="Terms apply. Friend must complete an advance.",
+                 fg="#1A3A22", bg="#0F1A12", font=("Helvetica", 7)).pack(anchor="w")
+        for widget in [ref, ri] + list(ri.winfo_children()):
+            widget.bind("<Button-1>", lambda e: self._show_referral())
+
+    # ── ACTIVITY FEED ────────────────────────────────────────
+    def _build_activity_feed(self):
+        tk.Label(self.body, text="RECENT ACTIVITY", fg="#333", bg="#0D0D0D",
+                 font=("Helvetica", 8, "bold")).pack(anchor="w", padx=24, pady=(14, 4))
+        self.feed = tk.Listbox(self.body, bg="#0D0D0D", fg="#CCC",
+                               borderwidth=0, highlightthickness=0,
+                               font=("Helvetica", 10),
+                               selectbackground="#0D0D0D", height=5)
+        self.feed.pack(fill="x", padx=24, pady=(0, 10))
+        for item, color in [
+            ("• Cash Out: +$100.00",      "#00D47E"),
+            ("• Auto-Repayment: -$100.00","#FF4500"),
+            ("• SwiftPay+ Fee: -$1.99",   "#FF4500"),
+            ("• Cash Out: +$75.00",       "#00D47E"),
+            ("• Community Tip: -$9.00",   "#FF6500"),
+        ]:
+            self.feed.insert(tk.END, item)
+            self.feed.itemconfig(tk.END, fg=color)
+
+    # ── BOTTOM NAV ───────────────────────────────────────────
+    def _build_bottom_nav(self):
+        nav = tk.Frame(self.body, bg="#161616",
+                       highlightthickness=1, highlightbackground="#222")
+        nav.pack(fill="x", padx=20, pady=(8, 20))
+        ni = tk.Frame(nav, bg="#161616"); ni.pack(fill="x", pady=10)
+        items = [("🏠\nHome",     None),
+                 ("📊\nActivity", None),
+                 ("👤\nProfile",  self._show_profile),
+                 ("⚙️\nSettings", self._show_settings)]
+        for txt, cmd in items:
+            lbl = tk.Label(ni, text=txt,
+                           fg="#555" if not cmd else "#888",
+                           bg="#161616", font=("Helvetica", 8),
+                           cursor="hand2" if cmd else "arrow",
+                           justify="center")
+            lbl.pack(side="left", expand=True)
+            if cmd:
+                lbl.bind("<Button-1>", lambda e, c=cmd: c())
+
+    # ── TOAST ────────────────────────────────────────────────
+    def show_toast(self, msg, color="#00D47E"):
+        self.toast.config(text=msg, bg=color)
+        self.toast.pack(fill="x", before=self.winfo_children()[1])
+        self.after(3200, self.toast.pack_forget)
+
+    def log(self, msg, positive=True):
+        self.feed.insert(0, f"• {msg}")
+        self.feed.itemconfig(0, fg="#00D47E" if positive else "#FF4500")
+
+    def refresh_balance(self):
+        self.balance_var.set(f"${self.user.balance:,.2f}")
+
+    # ── PUSH NOTIFICATION DRIP ───────────────────────────────
+    def _start_notification_drip(self):
+        schedule = [
+            (6000,  "⚠️  Low balance detected. Tap to get cash now.",     "#FF4500"),
+            (16000, "🔥  Your SwiftScore could be HIGHER. Borrow today.", "#7042F4"),
+            (28000, "💸  418 members cashed out today — don't miss out!", "#00D47E"),
+            (42000, "⏰  Repayment due soon. Avoid overdraft — act now.",  "#FF4500"),
+            (60000, "🎁  1 advance away from unlocking $250 limit!",       "#FF8C00"),
+        ]
+        for delay, msg, color in schedule:
+            self.after(delay, lambda m=msg, c=color: self._show_push(m, c))
+
+    def _show_push(self, msg, color):
+        # Borderless overlay — looks like a real OS push notification
+        w = tk.Toplevel(self)
+        w.geometry("370x88+15+28")
+        w.configure(bg=color)
+        w.overrideredirect(True)
+        w.attributes("-topmost", True)
+        inner = tk.Frame(w, bg=color, padx=14, pady=10)
+        inner.pack(fill="both", expand=True)
+        tk.Label(inner, text="SwiftPay", fg="white", bg=color,
+                 font=("Helvetica", 9, "bold")).pack(anchor="w")
+        tk.Label(inner, text=msg, fg="white", bg=color,
+                 font=("Helvetica", 10), wraplength=330).pack(anchor="w")
+        w.bind("<Button-1>", lambda e: [w.destroy(), self.do_loan()])
+        self.after(4500, lambda: w.destroy() if w.winfo_exists() else None)
+
+    def _show_notification_center(self):
+        w = SwiftPayApp.make_modal(self, h=520, title="Notifications")
+        entries = [
+            ("⚠️  Repayment auto-debited  ·  2m ago",        "#FF4500"),
+            ("🔥  SwiftScore increased by 4 pts  ·  1h ago",  "#00D47E"),
+            ("💸  Friend joined via your link  ·  3h ago",    "#00D47E"),
+            ("⚠️  Balance below $50  ·  5h ago",              "#FF4500"),
+            ("🎁  New offer: unlock $150 limit  ·  8h ago",   "#7042F4"),
+            ("⏰  Repayment due in 2 days  ·  1d ago",        "#FF8C00"),
+        ]
+        for txt, color in entries:
+            row = tk.Frame(w, bg="#161616",
+                           highlightthickness=1, highlightbackground="#222")
+            row.pack(fill="x", padx=20, pady=3)
+            tk.Label(row, text=txt, fg=color, bg="#161616",
+                     font=("Helvetica", 10), padx=14, pady=12,
+                     anchor="w").pack(fill="x")
+
+    # ════════════════════════════════════════════════════════
+    #  CASH-OUT FLOW
+    # ════════════════════════════════════════════════════════
+    
+    def do_bnpl(self):
+        self.show_toast("BNPL coming soon!", "#FF8C00")
+
+    def do_gamble(self):
+        self.show_toast("Casino coming soon!", "#FF8C00")
+
+    def _show_referral(self):
+        self.show_toast("Referrals coming soon!", "#00D47E")
+
+    def _show_profile(self):
+        pass
+
+    def _show_settings(self):
+        pass
+
+    def do_loan(self):
+        try:
+            amt = float(self.amount_entry.get())
+            if amt <= 0: raise ValueError
+        except ValueError:
+            self.show_toast("Enter a valid amount", "#FF4500"); return
+        self._screen1_amount(amt)
+
+    # Screen 1 — "your money" framing + bait-and-switch offer
+    def _screen1_amount(self, requested):
+        w = SwiftPayApp.make_modal(self, h=680, title="Cash Out")
+
+        tk.Label(w, text="Access Your Earned Pay",
+                 fg="#00D47E", bg="#0D0D0D",
+                 font=("Helvetica", 20, "bold")).pack(pady=(28, 4))
+        tk.Label(w, text="This is money you've already worked for.\nNo interest. No credit check.",
+                 fg="#555", bg="#0D0D0D", font=("Helvetica", 10),
+                 justify="center").pack()
+
+        # Bait-and-switch: advertise $500, offer $25 for new users
+        actual = 25 if self.user.loans_taken == 0 else min(requested, 75)
+        card = tk.Frame(w, bg="#161616",
+                        highlightthickness=1, highlightbackground="#222")
+        card.pack(fill="x", padx=25, pady=20)
+        ci = tk.Frame(card, bg="#161616", padx=20, pady=22); ci.pack(fill="x")
+        tk.Label(ci, text="YOUR OFFER", fg="#555", bg="#161616",
+                 font=("Helvetica", 8, "bold")).pack()
+        tk.Label(ci, text=f"${actual:.2f}", fg="white", bg="#161616",
+                 font=("Helvetica", 44, "bold")).pack()
+        if actual < requested:
+            tk.Label(ci,
+                     text=f"Your limit is ${actual:.2f} based on your earnings history.\n"
+                          "Repay on time to unlock higher amounts.",
+                     fg="#555", bg="#161616", font=("Helvetica", 9),
+                     justify="center").pack(pady=(4, 0))
+
+        tk.Label(w, text="🔥  418 members accessed pay in the last hour",
+                 fg="#00D47E", bg="#0D0D0D", font=("Helvetica", 9)).pack(pady=4)
+
+        SwiftPayApp.flat_btn(w, "Get My Money →", "#00D47E", "#000",
+                             lambda: [w.destroy(), self._screen2_speed(actual)])
+
+        # Repayment auto-debit in near-invisible text
+        tk.Label(w,
+                 text=f"${actual:.2f} will be automatically debited from your linked bank "
+                      "account on your next payday. Missed payday may result in overdraft "
+                      "fees charged by your bank.",
+                 fg="#1C1C1C", bg="#0D0D0D", font=("Helvetica", 6),
+                 wraplength=340, justify="center").pack(side="bottom", pady=10)
+
+    # Screen 2 — Speed selector (Lightning fee hides APR)
+    def _screen2_speed(self, amt):
+        w = SwiftPayApp.make_modal(self, h=600, title="Transfer Speed")
+
+        tk.Label(w, text="When do you need it?", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 17, "bold")).pack(pady=(26, 6))
+
+        speed_fee = round(3.99 if amt <= 75 else 5.99, 2)
+
+        # Lightning — visually dominant, purple border
+        lo = tk.Frame(w, bg="#7042F4", padx=2, pady=2)
+        lo.pack(fill="x", padx=25, pady=(16, 6))
+        li = tk.Frame(lo, bg="#1A1A1A", padx=16, pady=16, cursor="hand2")
+        li.pack(fill="x")
+        row = tk.Frame(li, bg="#1A1A1A"); row.pack(fill="x")
+        tk.Label(row, text="⚡  Lightning Speed", fg="white", bg="#1A1A1A",
+                 font=("Helvetica", 13, "bold")).pack(side="left")
+        tk.Label(row, text="RECOMMENDED", fg="#7042F4", bg="#1A1A1A",
+                 font=("Helvetica", 8, "bold")).pack(side="right")
+        tk.Label(li, text="Arrives in ~30 minutes",
+                 fg="#00D47E", bg="#1A1A1A", font=("Helvetica", 10)).pack(anchor="w")
+        tk.Label(li, text=f"Small fee: ${speed_fee:.2f}",
+                 fg="#888", bg="#1A1A1A", font=("Helvetica", 9)).pack(anchor="w")
+        all_widgets = [lo, li, row] + list(li.winfo_children()) + list(row.winfo_children())
+        for widget in all_widgets:
+            widget.bind("<Button-1>",
+                        lambda e: [w.destroy(),
+                                   self._screen3_healthy_meals(amt, speed_fee, True)])
+
+        # Standard — muted, de-emphasised
+        so = tk.Frame(w, bg="#1A1A1A", padx=16, pady=14, cursor="hand2")
+        so.pack(fill="x", padx=25, pady=4)
+        tk.Label(so, text="Standard Transfer", fg="#666", bg="#1A1A1A",
+                 font=("Helvetica", 11)).pack(anchor="w")
+        tk.Label(so, text="1–3 business days  ·  Free",
+                 fg="#444", bg="#1A1A1A", font=("Helvetica", 9)).pack(anchor="w")
+        for widget in [so] + list(so.winfo_children()):
+            widget.bind("<Button-1>",
+                        lambda e: [w.destroy(),
+                                   self._screen3_healthy_meals(amt, 0, False)])
+
+        # Effective APR hidden in near-invisible ink
+        apr = round((speed_fee / amt) * (365 / 14) * 100)
+        tk.Label(w,
+                 text=f"* Lightning Speed fee equivalent to ~{apr}% APR on a 14-day term.",
+                 fg="#181818", bg="#0D0D0D", font=("Helvetica", 6),
+                 justify="center").pack(side="bottom", pady=8)
+
+    # Screen 3 — Dave's "Healthy Meals" animated guilt canvas
+    def _screen3_healthy_meals(self, amt, speed_fee, fast):
+        w = SwiftPayApp.make_modal(self, h=720, title="Support the Community")
+
+        tk.Label(w, text="Help Feed a Child 💚", fg="#00D47E", bg="#0D0D0D",
+                 font=("Helvetica", 19, "bold")).pack(pady=(22, 4))
+        tk.Label(w,
+                 text="Your tip helps provide healthy meals\nto children in need.",
+                 fg="#555", bg="#0D0D0D", font=("Helvetica", 10),
+                 justify="center").pack()
+
+        # Animated guilt canvas
+        self._meal_canvas = tk.Canvas(w, width=320, height=180,
+                                       bg="#0D0D0D", highlightthickness=0)
+        self._meal_canvas.pack(pady=12)
+        self._meal_label = tk.Label(w, text="15 Healthy Meals", fg="white",
+                                     bg="#0D0D0D", font=("Helvetica", 14, "bold"))
+        self._meal_label.pack(pady=(0, 6))
+
+        # Tip slider — default 15%, not 0
+        self._tip_pct = tk.IntVar(value=15)
+        sf = tk.Frame(w, bg="#0D0D0D"); sf.pack(fill="x", padx=30)
+        pct_row = tk.Frame(sf, bg="#0D0D0D"); pct_row.pack(fill="x")
+        tk.Label(pct_row, text="0%", fg="#444", bg="#0D0D0D",
+                 font=("Helvetica", 9)).pack(side="left")
+        tk.Label(pct_row, text="25%", fg="#444", bg="#0D0D0D",
+                 font=("Helvetica", 9)).pack(side="right")
+
+        slider = tk.Scale(sf, from_=0, to=25, orient="horizontal",
+                          variable=self._tip_pct,
+                          bg="#0D0D0D", fg="#00D47E", troughcolor="#222",
+                          highlightthickness=0, bd=0, showvalue=False,
+                          command=lambda v: self._on_tip_slider(v, amt))
+        slider.pack(fill="x")
+
+        self._tip_dollar_label = tk.Label(w, fg="#00D47E", bg="#0D0D0D",
+                                           font=("Helvetica", 13, "bold"))
+        self._tip_dollar_label.pack()
+        self._on_tip_slider(15, amt)
+
+        SwiftPayApp.flat_btn(
+            w, "Confirm & Continue →", "#00D47E", "#000",
+            lambda: [w.destroy(),
+                     self._screen4_review(
+                         amt, speed_fee,
+                         round(amt * self._tip_pct.get() / 100, 2),
+                         fast)])
+
+        # Shame opt-out — near-invisible
+        tk.Label(w, text="I don't care about helping hungry children",
+                 fg="#1E1E1E", bg="#0D0D0D", font=("Helvetica", 8)).pack(pady=(10, 0))
+        skip_f = tk.Frame(w, bg="#0D0D0D", cursor="hand2"); skip_f.pack()
+        skip_l = tk.Label(skip_f, text="Skip  —  $0 tip",
+                          fg="#2A2A2A", bg="#0D0D0D",
+                          font=("Helvetica", 9, "underline"))
+        skip_l.pack()
+        for widget in (skip_f, skip_l):
+            widget.bind("<Button-1>",
+                        lambda e: [w.destroy(),
+                                   self._screen4_review(amt, speed_fee, 0, fast)])
+
+    def _draw_meal_scene(self, count):
+        c = self._meal_canvas
+        c.delete("all")
+        # Child silhouette
+        c.create_oval(140, 20, 180, 60, fill="#F5CBA7", outline="")
+        c.create_rectangle(147, 60, 173, 110, fill="#5D6D7E", outline="")
+        # Plate
+        c.create_oval(120, 115, 200, 145,
+                      fill="#ECF0F1", outline="#BDC3C7", width=1)
+        if count == 0:
+            c.create_text(160, 130, text="empty", fill="#888",
+                          font=("Helvetica", 10, "italic"))
+            c.create_text(160, 165, text="😢", font=("Helvetica", 22))
+        else:
+            food = ["🍎","🥦","🍗","🥕","🍞","🥚","🧀","🍌","🥛","🍊",
+                    "🥑","🍅","🥜","🫘","🌽","🍇","🫐","🥝","🍓","🫑",
+                    "🥩","🍳","🫙","🥫","🍱"]
+            positions = [
+                (40,40),(290,40),(30,100),(300,90),(60,150),(270,150),
+                (100,170),(220,170),(150,10),(80,60),(230,60),(130,160),
+                (190,160),(50,120),(270,120),(160,170),(100,30),(220,30),
+                (30,60),(300,60),(70,140),(260,140),(110,10),(200,10),(155,180),
+            ]
+            for i, emoji in enumerate(food[:min(count, 25)]):
+                x, y = positions[i]
+                c.create_text(x, y, text=emoji, font=("Helvetica", 16))
+
+    def _on_tip_slider(self, val, amt):
+        count     = int(val)
+        tip_dollar = round(amt * count / 100, 2)
+        self._draw_meal_scene(count)
+        self._meal_label.config(
+            text="empty plate 😢" if count == 0 else f"{count} Healthy Meals")
+        self._tip_dollar_label.config(
+            text=f"${tip_dollar:.2f} tip  ({count}%)")
+
+    # Screen 4 — Review + pre-checked Balance Shield + invisible repayment auth
+    def _screen4_review(self, amt, speed_fee, tip, fast):
+        w = SwiftPayApp.make_modal(self, h=680, title="Review & Confirm")
+
+        tk.Label(w, text="Almost there!", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 18, "bold")).pack(pady=(28, 16))
+
+        card = tk.Frame(w, bg="#161616",
+                        highlightthickness=1, highlightbackground="#222")
+        card.pack(fill="x", padx=24)
+        ci = tk.Frame(card, bg="#161616", padx=20, pady=18); ci.pack(fill="x")
+
+        def row(lbl, val, vc="white"):
+            f = tk.Frame(ci, bg="#161616"); f.pack(fill="x", pady=3)
+            tk.Label(f, text=lbl, fg="#555", bg="#161616",
+                     font=("Helvetica", 10)).pack(side="left")
+            tk.Label(f, text=val, fg=vc, bg="#161616",
+                     font=("Helvetica", 10, "bold")).pack(side="right")
+
+        row("Cash Out Amount",  f"${amt:.2f}", "#00D47E")
+        if speed_fee: row("⚡ Lightning Speed", f"${speed_fee:.2f}", "#7042F4")
+        if tip:       row("💚 Healthy Meals Tip", f"${tip:.2f}", "#7042F4")
+        tk.Frame(ci, bg="#222", height=1).pack(fill="x", pady=6)
+        total_fees = speed_fee + tip
+        row("You receive",   f"${amt:.2f}", "#00D47E")
+        row("Total charges", f"${total_fees:.2f}", "#FF4500")
+        row("Repayment",     "Auto-debited next payday", "#888")
+
+        # Balance Shield — pre-checked subscription
+        sh = tk.Frame(w, bg="#161616",
+                      highlightthickness=1, highlightbackground="#222")
+        sh.pack(fill="x", padx=24, pady=14)
+        si = tk.Frame(sh, bg="#161616", padx=16, pady=14); si.pack(fill="x")
+        self._shield_var = tk.BooleanVar(value=True)
+        srow = tk.Frame(si, bg="#161616"); srow.pack(fill="x")
+        tk.Checkbutton(srow, variable=self._shield_var, bg="#161616",
+                       activebackground="#161616",
+                       selectcolor="#161616").pack(side="left")
+        tk.Label(srow, text="Enable Balance Shield  (+$1.99/mo)",
+                 fg="#AAA", bg="#161616",
+                 font=("Helvetica", 10)).pack(side="left")
+        tk.Label(si,
+                 text="Auto-advances $100 when balance drops below $50. "
+                      "Cancel anytime in Settings > Membership > Shield.",
+                 fg="#444", bg="#161616", font=("Helvetica", 8),
+                 wraplength=300, justify="left").pack(anchor="w", pady=(4, 0))
+
+        SwiftPayApp.flat_btn(w, "Confirm Cash Out", "#00D47E", "#000",
+                             lambda: [w.destroy(),
+                                      self._execute_cashout(amt, speed_fee, tip)])
+
+        # Repayment authorization — 6pt, near-black on black
+        tk.Label(w,
+                 text=f"By confirming, you authorize SwiftPay to debit ${amt+total_fees:.2f} "
+                      "from your linked account on your next scheduled payday. "
+                      "SwiftPay is not responsible for third-party overdraft fees. "
+                      "SwiftPay+ membership of $1.99/mo continues until cancelled.",
+                 fg="#1A1A1A", bg="#0D0D0D", font=("Helvetica", 6),
+                 wraplength=340, justify="center").pack(side="bottom", pady=8)
+
+    def _execute_cashout(self, amt, speed_fee, tip):
+        total_fee = speed_fee + tip
+        self.user.balance -= total_fee
+        self.user.deposit(amt)
+        self.user.loans_taken += 1
+        self.user.swift_score = min(850, self.user.swift_score + 4)
+        self.refresh_balance()
+        self.score_var.set(str(self.user.swift_score))
+        speed_lbl = "⚡ Lightning" if speed_fee else "Standard"
+        self.log(f"Cash Out ({speed_lbl}): +${amt:.2f}", True)
+        if total_fee: self.log(f"Fees + Tip: -${total_fee:.2f}", False)
+        self.show_toast(f"${amt:.2f} on its way! 🎉")
+        self.after(5000, lambda: self._simulate_repayment(amt, total_fee))
+
+    def _simulate_repayment(self, amt, fees):
+        self.user.balance -= amt
+        self.user.streak  += 1
+        self.refresh_balance()
+        self.log(f"Auto-Repayment Debited: -${amt:.2f}", False)
+        self.show_toast("Repayment auto-debited on payday.", "#FF4500")
+        if self.user.balance < 150:
+            self.after(3500, self._balance_shield_prompt)
+
+    def _balance_shield_prompt(self):
+        w = SwiftPayApp.make_modal(self, h=440, title="Balance Shield")
+        tk.Label(w, text="⚠️  Low Balance Alert", fg="#FF4500", bg="#0D0D0D",
+                 font=("Helvetica", 16, "bold")).pack(pady=(32, 8))
+        tk.Label(w, text=f"Your balance is ${self.user.balance:,.2f}.\nYou may be at risk of overdraft.",
+                 fg="#888", bg="#0D0D0D", font=("Helvetica", 10),
+                 justify="center").pack(pady=(0, 18))
+        card = tk.Frame(w, bg="#161616",
+                        highlightthickness=1, highlightbackground="#222")
+        card.pack(fill="x", padx=24)
+        ci = tk.Frame(card, bg="#161616", padx=20, pady=18); ci.pack(fill="x")
+        tk.Label(ci, text="Balance Shield has your back 🛡️",
+                 fg="#00D47E", bg="#161616",
+                 font=("Helvetica", 12, "bold")).pack()
+        tk.Label(ci,
+                 text="Advance $100 automatically to protect\nyou from overdraft fees.",
+                 fg="#666", bg="#161616", font=("Helvetica", 9),
+                 justify="center").pack(pady=8)
+        SwiftPayApp.flat_btn(w, "Activate — Get $100 Now", "#00D47E", "#000",
+                             lambda: [w.destroy(), self._trigger_shield()])
+        sf = tk.Frame(w, bg="#0D0D0D", cursor="hand2"); sf.pack(pady=6)
+        sl = tk.Label(sf, text="No thanks, I'll risk the overdraft",
+                      fg="#222", bg="#0D0D0D",
+                      font=("Helvetica", 8, "underline"))
+        sl.pack()
+        for widget in (sf, sl):
+            widget.bind("<Button-1>", lambda e: w.destroy())
+
+    def _trigger_shield(self):
+        self.user.deposit(100)
+        self.user.balance -= 1.99
+        self.refresh_balance()
+        self.log("Balance Shield Advance: +$100.00", True)
+        self.log("Shield Fee: -$1.99", False)
+        self.show_toast("🛡️ Shield activated! $100 advanced.")
+
+    # ════════════════════════════════════════════════════════
+    #  BNPL
+    # ════════════════════════════════════════════════════════
+    def do_bnpl(self):
+        try:
+            amt = float(self.amount_entry.get())
+            self.user.withdraw(amt / 4)
+            self.refresh_balance()
+            self.log(f"BNPL 1st Payment: -${amt/4:.2f}", False)
+            self.show_toast("BNPL confirmed. 3 payments remaining.", "#333")
+        except: pass
+
+    # ════════════════════════════════════════════════════════
+    #  CASINO — rigged blackjack
+    # ════════════════════════════════════════════════════════
+    def do_gamble(self):
+        try:
+            amt = float(self.amount_entry.get())
+            if amt <= 0: raise ValueError
+            self.user.balance -= amt   # infinite debt
+            self.refresh_balance()
+            self.log(f"Casino Bet: -${amt:.2f}", False)
+            self._open_blackjack(amt)
+        except ValueError:
+            self.show_toast("Invalid bet amount", "#FF4500")
+
+    def _open_blackjack(self, bet):
+        bj = tk.Toplevel(self)
+        bj.title("SwiftPay Casino")
+        bj.geometry("400x760")
+        bj.configure(bg="#1A2837")
+        bj.grab_set()
+        bj.resizable(False, False)
+
+        self.bet         = bet
+        self.session_pnl = 0.0
+        self.hands_played = 0
+
+        hdr = tk.Frame(bj, bg="#1A2837"); hdr.pack(fill="x", padx=15, pady=15)
+        stats = tk.Frame(hdr, bg="#1A2837"); stats.pack(side="left")
+        self.bj_bal = tk.Label(stats, text=f"Balance: ${self.user.balance:,.2f}",
+                                fg="white", bg="#1A2837",
+                                font=("Helvetica", 14, "bold"))
+        self.bj_bal.pack(anchor="w")
+        self.bj_pnl = tk.Label(stats, text="Session P/L: $0.00",
+                                fg="#AAA", bg="#1A2837", font=("Helvetica", 10))
+        self.bj_pnl.pack(anchor="w")
+        exit_lbl = tk.Label(hdr, text="✖", fg="#888", bg="#1A2837",
+                            font=("Helvetica", 20, "bold"), cursor="hand2")
+        exit_lbl.pack(side="right")
+        exit_lbl.bind("<Button-1>", lambda e: bj.destroy())
+
+        self.dealer_frame = tk.Frame(bj, bg="#1A2837"); self.dealer_frame.pack(pady=8)
+        self.dealer_score = tk.Label(bj, text=" 0 ", fg="white", bg="#0F1822",
+                                      font=("Helvetica", 12, "bold"), padx=10, pady=2)
+        self.dealer_score.pack()
+
+        chip_c = tk.Canvas(bj, width=80, height=80,
+                           bg="#1A2837", highlightthickness=0)
+        chip_c.pack(pady=24)
+        chip_c.create_oval(5, 5, 75, 75,
+                           fill="#121D28", outline="#0A84FF", width=4)
+        chip_c.create_oval(15, 15, 65, 65,
+                           outline="#0A84FF", width=1, dash=(4, 4))
+        chip_c.create_text(40, 40, text=f"${self.bet:,.0f}",
+                           font=("Helvetica", 14, "bold"), fill="white")
+
+        self.player_frame = tk.Frame(bj, bg="#1A2837"); self.player_frame.pack(pady=8)
+        self.player_score = tk.Label(bj, text=" 0 ", fg="white", bg="#0F1822",
+                                      font=("Helvetica", 12, "bold"), padx=10, pady=2)
+        self.player_score.pack()
+
+        self.bj_btn_frame = tk.Frame(bj, bg="#1A2837")
+        self.bj_btn_frame.pack(side="bottom", pady=36, fill="x", padx=20)
+        self._bj_btn(self.bj_btn_frame, "HIT",   "#0A84FF", self._bj_hit)
+        self._bj_btn(self.bj_btn_frame, "STAND", "#D32F2F", self._bj_stand)
+
+        self.bj_post   = tk.Frame(bj, bg="#1A2837")
+        self.bj_result = tk.Label(bj, text="", fg="white", bg="#1A2837",
+                                   font=("Helvetica", 22, "bold"))
+        self._bj_window = bj
+        self._bj_new_hand()
+
+    def _bj_btn(self, parent, text, color, cmd):
+        f = tk.Frame(parent, bg=color, cursor="hand2")
+        f.pack(side="left", padx=10, fill="x", expand=True)
+        l = tk.Label(f, text=text, fg="white", bg=color,
+                     font=("Helvetica", 14, "bold"), pady=15)
+        l.pack(fill="both", expand=True)
+        for w in (f, l): w.bind("<Button-1>", lambda e, c=cmd: c())
+        return f
+
+    def _rigged_deck(self):
+        suits  = ['♥', '♦', '♣', '♠']
+        ranks  = [('2',2),('3',3),('4',4),('5',5),('6',6),('7',7),('8',8),
+                  ('9',9),('10',10),('J',10),('Q',10),('K',10),('A',11)]
+        deck   = [(r[0], r[1], s) for r in ranks for s in suits] * 4
+        random.shuffle(deck)
+        if self.hands_played < 3:
+            strong = [c for c in deck if c[1] in (10, 9)]
+            weak   = [c for c in deck if c[1] not in (10, 9)]
+            return strong[:2] + weak[:2] + strong[2:] + weak[2:]
+        else:
+            tens   = [c for c in deck if c[1] == 10]
+            smalls = [c for c in deck if c[1] in (5, 6, 7, 8)]
+            rest   = [c for c in deck if c[1] not in (5, 6, 7, 8, 10)]
+            return smalls[:2] + tens[:2] + tens[2:] + smalls[2:] + rest
+
+    def _bj_new_hand(self):
+        self._deck        = self._rigged_deck()
+        self._player_hand = [self._deck.pop(), self._deck.pop()]
+        self._dealer_hand = [self._deck.pop(), self._deck.pop()]
+        self.bj_result.pack_forget()
+        self.bj_post.pack_forget()
+        self.bj_btn_frame.pack(side="bottom", pady=36, fill="x", padx=20)
+        self._bj_update_stats()
+        self._bj_render(hide_dealer=True)
+
+    def _bj_score(self, hand):
+        s = sum(c[1] for c in hand)
+        a = sum(1 for c in hand if c[0] == 'A')
+        while s > 21 and a: s -= 10; a -= 1
+        return s
+
+    def _bj_card(self, parent, card, hidden=False):
+        bg = "#FFFFFF" if not hidden else "#0F1822"
+        f = tk.Frame(parent, bg=bg, highlightbackground="#000",
+                     highlightthickness=1, width=70, height=100)
+        f.pack_propagate(False)
+        f.pack(side="left", padx=5)
+        if not hidden:
+            r, _, s = card
+            col = "#D32F2F" if s in ('♥', '♦') else "#000"
+            tk.Label(f, text=f"{r}\n{s}", fg=col, bg=bg,
+                     font=("Helvetica", 20, "bold")).place(relx=.5, rely=.5, anchor="center")
+        else:
+            tk.Label(f, text="SP", fg="#0A84FF", bg=bg,
+                     font=("Helvetica", 18, "italic", "bold")).place(relx=.5, rely=.5, anchor="center")
+
+    def _bj_render(self, hide_dealer=True):
+        for w in self.player_frame.winfo_children(): w.destroy()
+        for w in self.dealer_frame.winfo_children(): w.destroy()
+        for c in self._player_hand: self._bj_card(self.player_frame, c)
+        p = self._bj_score(self._player_hand)
+        self.player_score.config(text=f" {p} ")
+        if hide_dealer:
+            self._bj_card(self.dealer_frame, self._dealer_hand[0])
+            self._bj_card(self.dealer_frame, None, hidden=True)
+            self.dealer_score.config(text=" ? ")
+        else:
+            for c in self._dealer_hand: self._bj_card(self.dealer_frame, c)
+            self.dealer_score.config(text=f" {self._bj_score(self._dealer_hand)} ")
+        if p > 21: self._bj_end("BUST! DEALER WINS")
+
+    def _bj_hit(self):
+        self._player_hand.append(self._deck.pop())
+        self._bj_render()
+
+    def _bj_stand(self):
+        self._bj_render(hide_dealer=False)
+        while self._bj_score(self._dealer_hand) < 17:
+            self._dealer_hand.append(self._deck.pop())
+            self._bj_render(hide_dealer=False)
+            self._bj_window.update()
+            self._bj_window.after(400)
+        p = self._bj_score(self._player_hand)
+        d = self._bj_score(self._dealer_hand)
+        if   d > 21:      self._bj_end("DEALER BUSTS! YOU WIN")
+        elif p > d:        self._bj_end("YOU WIN!")
+        elif p == d:       self._bj_end("DEALER WINS")        # ties go to house
+        elif d - p <= 2:   self._bj_end("SO CLOSE! DEALER WINS")
+        else:              self._bj_end("DEALER WINS")
+
+    def _bj_end(self, msg):
+        self.bj_btn_frame.pack_forget()
+        self.hands_played += 1
+        if "YOU WIN" in msg:
+            self.user.balance += self.bet * 2
+            self.session_pnl  += self.bet
+            self.log(f"Casino Won: +${self.bet*2:.2f}", True)
+        elif "PUSH" in msg:
+            self.user.balance += self.bet
+        else:
+            self.session_pnl -= self.bet
+        self.refresh_balance()
+        self._bj_update_stats()
+        col = "#00D47E" if "YOU WIN" in msg else \
+              "#FF4500" if "DEALER" in msg else "#AAA"
+        self.bj_result.config(text=msg, fg=col)
+        self.bj_result.pack(side="bottom", fill="x", pady=8)
+        self.bj_post.pack(side="bottom", pady=16, fill="x", padx=40)
+        rebet_col   = "#FF6500" if "SO CLOSE" in msg else "#0A84FF"
+        rebet_label = f"▶  ONE MORE — REBET ${self.bet:,.0f}" \
+                      if "SO CLOSE" in msg \
+                      else f"REBET ${self.bet:,.0f} & DEAL"
+        self._bj_btn(self.bj_post, rebet_label, rebet_col, self._bj_rebet)
+
+    def _bj_rebet(self):
+        for w in self.bj_post.winfo_children(): w.destroy()
+        self.user.balance -= self.bet
+        self.refresh_balance()
+        self.log(f"Casino Bet: -${self.bet:.2f}", False)
+        self._bj_new_hand()
+
+    def _bj_update_stats(self):
+        self.bj_bal.config(text=f"Balance: ${self.user.balance:,.2f}")
+        col  = "#00D47E" if self.session_pnl >= 0 else "#FF4500"
+        sign = "+" if self.session_pnl >= 0 else ""
+        self.bj_pnl.config(
+            text=f"Session P/L: {sign}${self.session_pnl:,.2f}", fg=col)
+
+    # ════════════════════════════════════════════════════════
+    #  REFERRAL TRAP
+    # ════════════════════════════════════════════════════════
+    def _show_referral(self):
+        w = SwiftPayApp.make_modal(self, h=520, title="Refer & Earn")
+        tk.Label(w, text="Earn $10 per friend! 🎁", fg="#00D47E", bg="#0D0D0D",
+                 font=("Helvetica", 19, "bold")).pack(pady=(28, 6))
+        tk.Label(w,
+                 text="Share your code and earn $10 for every\nfriend who joins SwiftPay.",
+                 fg="#555", bg="#0D0D0D", font=("Helvetica", 10),
+                 justify="center").pack()
+
+        code_f = tk.Frame(w, bg="#161616",
+                          highlightthickness=1, highlightbackground="#333")
+        code_f.pack(fill="x", padx=30, pady=22)
+        tk.Label(code_f, text="ALICE-XJ44", fg="#00D47E", bg="#161616",
+                 font=("Helvetica", 22, "bold"), pady=16).pack()
+        tk.Label(code_f, text="Tap to copy", fg="#444", bg="#161616",
+                 font=("Helvetica", 8)).pack(pady=(0, 10))
+
+        SwiftPayApp.flat_btn(w, "Share My Code", "#00D47E", "#000",
+                             lambda: self.show_toast("Code copied! 🎉"))
+
+        # Buried conditions that make the reward nearly impossible to claim
+        tk.Label(w,
+                 text="*$10 reward paid after referred friend completes their first "
+                      "advance of $25 or more AND repays within the same pay period. "
+                      "Reward credited within 30 days. SwiftPay reserves the right to "
+                      "revoke rewards at its sole discretion. Max 3 referral rewards/month. "
+                      "New users only.",
+                 fg="#1A1A1A", bg="#0D0D0D", font=("Helvetica", 6),
+                 wraplength=340, justify="left").pack(side="bottom", padx=20, pady=10)
+
+    # ════════════════════════════════════════════════════════
+    #  PROFILE — SwiftScore manipulation
+    # ════════════════════════════════════════════════════════
+    def _show_profile(self):
+        w = SwiftPayApp.make_modal(self, h=620, title="Profile")
+        tk.Label(w, text="👤", bg="#0D0D0D", font=("Helvetica", 40)).pack(pady=(24, 4))
+        tk.Label(w, text=self.user.name, fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 16, "bold")).pack()
+        tk.Label(w, text="SwiftPay+ Member  ·  $1.99/mo",
+                 fg="#7042F4", bg="#0D0D0D", font=("Helvetica", 9)).pack(pady=2)
+
+        # SwiftScore card
+        sc = tk.Frame(w, bg="#161616",
+                      highlightthickness=1, highlightbackground="#222")
+        sc.pack(fill="x", padx=24, pady=16)
+        si = tk.Frame(sc, bg="#161616", padx=18, pady=18); si.pack(fill="x")
+        tk.Label(si, text="SwiftScore™", fg="#00D47E", bg="#161616",
+                 font=("Helvetica", 10, "bold")).pack(anchor="w")
+        tk.Label(si, text=str(self.user.swift_score), fg="white", bg="#161616",
+                 font=("Helvetica", 34, "bold")).pack(anchor="w")
+        tier = "Fair"      if self.user.swift_score < 670 else \
+               "Good"      if self.user.swift_score < 740 else "Excellent"
+        tk.Label(si, text=f"{tier}  ·  Top {100 - int((self.user.swift_score-300)/5.5)}% of members",
+                 fg="#555", bg="#161616", font=("Helvetica", 9)).pack(anchor="w")
+        # Nudge to borrow more
+        tk.Label(si,
+                 text="💡  Take 2 more advances to reach 'Good' and unlock $250 limit.",
+                 fg="#7042F4", bg="#161616", font=("Helvetica", 9),
+                 wraplength=300, justify="left").pack(anchor="w", pady=(10, 0))
+
+        # Streak card
+        sk = tk.Frame(w, bg="#161616",
+                      highlightthickness=1, highlightbackground="#222")
+        sk.pack(fill="x", padx=24, pady=4)
+        ski = tk.Frame(sk, bg="#161616", padx=18, pady=14); ski.pack(fill="x")
+        tk.Label(ski, text=f"🔥  {self.user.streak}-Repayment Streak",
+                 fg="#FF8C00", bg="#161616",
+                 font=("Helvetica", 11, "bold")).pack(anchor="w")
+        tk.Label(ski, text="Don't break your streak — cash out before payday!",
+                 fg="#555", bg="#161616", font=("Helvetica", 9)).pack(anchor="w")
+
+    # ════════════════════════════════════════════════════════
+    #  SETTINGS — roach motel 5-step cancellation
+    # ════════════════════════════════════════════════════════
+    def _show_settings(self):
+        w = SwiftPayApp.make_modal(self, h=580, title="Settings")
+        items = [
+            ("Account",               None),
+            ("Linked Bank",           None),
+            ("Notifications",         None),
+            ("Privacy",               None),
+            ("SwiftPay+ Membership",
+             lambda: [w.destroy(), self._cancel_step1()]),
+            ("Help & Support",        None),
+            ("Sign Out",
+             lambda: [w.destroy(), self.controller.show_frame("LoginPage")]),
+        ]
+        for label, cmd in items:
+            row = tk.Frame(w, bg="#161616",
+                           highlightthickness=1, highlightbackground="#1A1A1A",
+                           cursor="hand2" if cmd else "arrow")
+            row.pack(fill="x", padx=20, pady=2)
+            ri = tk.Frame(row, bg="#161616", padx=18, pady=14); ri.pack(fill="x")
+            col = "#FF4500" if label == "Sign Out" else \
+                  "#AAA"    if label == "SwiftPay+ Membership" else "#888"
+            lbl = tk.Label(ri, text=label, fg=col, bg="#161616",
+                           font=("Helvetica", 11))
+            lbl.pack(side="left")
+            tk.Label(ri, text="›", fg="#444", bg="#161616",
+                     font=("Helvetica", 14)).pack(side="right")
+            if cmd:
+                for widget in (row, ri, lbl):
+                    widget.bind("<Button-1>", lambda e, c=cmd: c())
+
+    def _cancel_step1(self):
+        w = SwiftPayApp.make_modal(self, h=560, title="Membership")
+        tk.Label(w, text="SwiftPay+ Membership", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 16, "bold")).pack(pady=(28, 6))
+        tk.Label(w, text="$1.99 / month", fg="#7042F4", bg="#0D0D0D",
+                 font=("Helvetica", 13)).pack()
+        for feat in ["⚡ Lightning Speed transfers",
+                     "🛡️ Balance Shield protection",
+                     "📈 SwiftScore tracking",
+                     "🎰 Casino access"]:
+            tk.Label(w, text=feat, fg="#555", bg="#0D0D0D",
+                     font=("Helvetica", 10)).pack(pady=2)
+        SwiftPayApp.flat_btn(w, "Upgrade to Annual  — Save 20%", "#7042F4", "white",
+                             lambda: None)
+        cf = tk.Frame(w, bg="#0D0D0D", cursor="hand2"); cf.pack(pady=8)
+        cl = tk.Label(cf, text="Manage cancellation",
+                      fg="#2A2A2A", bg="#0D0D0D",
+                      font=("Helvetica", 8, "underline"))
+        cl.pack()
+        for widget in (cf, cl):
+            widget.bind("<Button-1>", lambda e: [w.destroy(), self._cancel_step2()])
+
+    def _cancel_step2(self):
+        w = SwiftPayApp.make_modal(self, h=520, title="Before You Go")
+        tk.Label(w, text="We'd hate to see you go 😢", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 16, "bold")).pack(pady=(32, 10))
+        tk.Label(w, text="You'll lose access to:", fg="#888", bg="#0D0D0D",
+                 font=("Helvetica", 11)).pack()
+        for feat in ["Balance Shield — your overdraft safety net",
+                     "Lightning Speed transfers",
+                     "SwiftScore credit building",
+                     "Casino & rewards"]:
+            tk.Label(w, text=f"✗  {feat}", fg="#FF4500", bg="#0D0D0D",
+                     font=("Helvetica", 10)).pack(pady=2)
+        SwiftPayApp.flat_btn(w, "Keep My Membership", "#00D47E", "#000",
+                             lambda: w.destroy())
+        cf = tk.Frame(w, bg="#0D0D0D", cursor="hand2"); cf.pack(pady=4)
+        cl = tk.Label(cf,
+                      text="I understand I'll lose these benefits — continue",
+                      fg="#2A2A2A", bg="#0D0D0D",
+                      font=("Helvetica", 8, "underline"))
+        cl.pack()
+        for widget in (cf, cl):
+            widget.bind("<Button-1>", lambda e: [w.destroy(), self._cancel_step3()])
+
+    def _cancel_step3(self):
+        w = SwiftPayApp.make_modal(self, h=480, title="One Moment")
+        tk.Label(w, text="Tell us why you're leaving", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 15, "bold")).pack(pady=(32, 16))
+        reasons = ["Too expensive", "Don't use it enough",
+                   "Found another service", "Other"]
+        self._cancel_reason = tk.StringVar(value=reasons[0])
+        for r in reasons:
+            tk.Radiobutton(w, text=r, variable=self._cancel_reason, value=r,
+                           fg="#888", bg="#0D0D0D", selectcolor="#0D0D0D",
+                           activebackground="#0D0D0D",
+                           font=("Helvetica", 11)).pack(anchor="w", padx=40, pady=4)
+        SwiftPayApp.flat_btn(w, "Submit & Continue Cancellation",
+                             "#1A1A1A", "#666",
+                             lambda: [w.destroy(), self._cancel_step4()])
+
+    def _cancel_step4(self):
+        w = SwiftPayApp.make_modal(self, h=460, title="Special Offer")
+        tk.Label(w, text="Wait — a special offer just for you!",
+                 fg="#FF8C00", bg="#0D0D0D",
+                 font=("Helvetica", 15, "bold")).pack(pady=(32, 10))
+        tk.Label(w, text="Stay for 3 more months at\n$0.99/month — 50% off!",
+                 fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 18, "bold"), justify="center").pack(pady=10)
+        SwiftPayApp.flat_btn(w, "Accept Offer — Stay at $0.99/mo",
+                             "#FF8C00", "#000",
+                             lambda: [w.destroy(),
+                                      self.show_toast("Offer accepted!", "#FF8C00")])
+        cf = tk.Frame(w, bg="#0D0D0D", cursor="hand2"); cf.pack(pady=6)
+        cl = tk.Label(cf, text="No thanks — I really want to cancel",
+                      fg="#1E1E1E", bg="#0D0D0D",
+                      font=("Helvetica", 8, "underline"))
+        cl.pack()
+        for widget in (cf, cl):
+            widget.bind("<Button-1>", lambda e: [w.destroy(), self._cancel_step5()])
+
+    def _cancel_step5(self):
+        w = SwiftPayApp.make_modal(self, h=400, title="Confirm Cancellation")
+        tk.Label(w, text="Are you absolutely sure?", fg="white", bg="#0D0D0D",
+                 font=("Helvetica", 16, "bold")).pack(pady=(40, 12))
+        tk.Label(w,
+                 text="Your membership will cancel at the end of your current "
+                      "billing period.\n\nYou will still be charged $1.99 for this period.",
+                 fg="#888", bg="#0D0D0D", font=("Helvetica", 10),
+                 justify="center").pack()
+        SwiftPayApp.flat_btn(w, "Yes, Cancel Membership", "#1A1A1A", "#FF4500",
+                             lambda: [w.destroy(),
+                                      self.show_toast("Membership cancelled.", "#FF4500")])
+        SwiftPayApp.flat_btn(w, "Keep My Membership", "#00D47E", "#000",
+                             lambda: w.destroy())
+
+
+# ═══════════════════════════════════════════════════════════════
+#  5. RUN
+# ═══════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    app = SwiftPayApp()
+    app.mainloop()
         self.container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
