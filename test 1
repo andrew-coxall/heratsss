@@ -349,22 +349,6 @@ class DashboardPage(tk.Frame):
     # ════════════════════════════════════════════════════════
     #  CASH-OUT FLOW
     # ════════════════════════════════════════════════════════
-    
-    def do_bnpl(self):
-        self.show_toast("BNPL coming soon!", "#FF8C00")
-
-    def do_gamble(self):
-        self.show_toast("Casino coming soon!", "#FF8C00")
-
-    def _show_referral(self):
-        self.show_toast("Referrals coming soon!", "#00D47E")
-
-    def _show_profile(self):
-        pass
-
-    def _show_settings(self):
-        pass
-
     def do_loan(self):
         try:
             amt = float(self.amount_entry.get())
@@ -680,16 +664,430 @@ class DashboardPage(tk.Frame):
         self.show_toast("🛡️ Shield activated! $100 advanced.")
 
     # ════════════════════════════════════════════════════════
-    #  BNPL
+    #  BNPL — Fake UberEats + Klarna flow
     # ════════════════════════════════════════════════════════
+
+    # Fake restaurant + menu data
+    RESTAURANTS = [
+        {
+            "name": "Burger Palace 🍔",
+            "tag": "Burgers · 15–25 min · $1.99 delivery",
+            "rating": "4.7",
+            "promo": "20% off first order",
+            "items": [
+                ("Classic Smash Burger",     13.99),
+                ("Double Bacon Burger",      16.49),
+                ("Crispy Chicken Sandwich",  14.29),
+                ("Cheese Fries (Large)",      6.99),
+                ("Onion Rings",               5.49),
+                ("Chocolate Milkshake",       6.29),
+            ],
+        },
+        {
+            "name": "Dragon Wok 🥢",
+            "tag": "Chinese · 20–35 min · $0.99 delivery",
+            "rating": "4.5",
+            "promo": "Free spring roll with $20+",
+            "items": [
+                ("General Tso's Chicken",    14.99),
+                ("Beef & Broccoli",          15.49),
+                ("Shrimp Fried Rice",        13.99),
+                ("Vegetable Dumplings (6)",   8.49),
+                ("Egg Drop Soup",             4.99),
+                ("Fortune Cookie (x4)",       1.99),
+            ],
+        },
+        {
+            "name": "Napoli Pizza 🍕",
+            "tag": "Italian · 25–40 min · Free delivery",
+            "rating": "4.8",
+            "promo": "Buy 2 pizzas, get 1 free garlic bread",
+            "items": [
+                ("Margherita Pizza (12\")",   15.99),
+                ("Pepperoni Pizza (12\")",    17.49),
+                ("BBQ Chicken Pizza (12\")",  18.99),
+                ("Caesar Salad",              9.49),
+                ("Garlic Bread (4 pcs)",      5.99),
+                ("Tiramisu",                  7.49),
+            ],
+        },
+        {
+            "name": "Seoul Bowl 🌶️",
+            "tag": "Korean · 20–30 min · $1.49 delivery",
+            "rating": "4.6",
+            "promo": "Free miso soup on orders $25+",
+            "items": [
+                ("Bibimbap Bowl",            13.49),
+                ("Korean Fried Chicken",     16.99),
+                ("Japchae Noodles",          12.99),
+                ("Kimchi Pancake",            8.99),
+                ("Tteokbokki (Spicy)",        9.49),
+                ("Banana Milk",               3.49),
+            ],
+        },
+    ]
+
     def do_bnpl(self):
-        try:
-            amt = float(self.amount_entry.get())
-            self.user.withdraw(amt / 4)
-            self.refresh_balance()
-            self.log(f"BNPL 1st Payment: -${amt/4:.2f}", False)
-            self.show_toast("BNPL confirmed. 3 payments remaining.", "#333")
-        except: pass
+        """Opens the fake UberEats storefront."""
+        self._cart       = {}   # item_name -> (price, qty)
+        self._restaurant = None
+        self._ue_open_storefront()
+
+    # ── Screen 1: Restaurant list ──────────────────────────
+    def _ue_open_storefront(self):
+        w = SwiftPayApp.make_modal(self, h=720, title="UberEats")
+        w.configure(bg="#141414")
+
+        # UberEats-style search bar (non-functional, cosmetic)
+        search_f = tk.Frame(w, bg="#2A2A2A",
+                            highlightthickness=1, highlightbackground="#333")
+        search_f.pack(fill="x", padx=18, pady=(10, 6))
+        tk.Label(search_f, text="🔍  Search restaurants or dishes",
+                 fg="#666", bg="#2A2A2A",
+                 font=("Helvetica", 11), padx=12, pady=10).pack(anchor="w")
+
+        # Promo banner — "Pay in 4" already planted in the user's mind
+        promo = tk.Frame(w, bg="#06C167", padx=16, pady=10)
+        promo.pack(fill="x", padx=18, pady=(0, 8))
+        tk.Label(promo,
+                 text="✨  Pay in 4 interest-free installments with SwiftPay BNPL",
+                 fg="white", bg="#06C167",
+                 font=("Helvetica", 10, "bold")).pack(anchor="w")
+        tk.Label(promo, text="as low as $3.24/payment on a $13 order",
+                 fg="#D0F5E4", bg="#06C167",
+                 font=("Helvetica", 8)).pack(anchor="w")
+
+        tk.Label(w, text="FEATURED RESTAURANTS", fg="#444", bg="#141414",
+                 font=("Helvetica", 8, "bold")).pack(anchor="w", padx=20, pady=(6, 4))
+
+        # Restaurant cards
+        for rest in self.RESTAURANTS:
+            card = tk.Frame(w, bg="#1E1E1E",
+                            highlightthickness=1, highlightbackground="#2A2A2A",
+                            cursor="hand2")
+            card.pack(fill="x", padx=18, pady=4)
+            ci = tk.Frame(card, bg="#1E1E1E", padx=14, pady=12)
+            ci.pack(fill="x")
+
+            top = tk.Frame(ci, bg="#1E1E1E"); top.pack(fill="x")
+            tk.Label(top, text=rest["name"], fg="white", bg="#1E1E1E",
+                     font=("Helvetica", 12, "bold")).pack(side="left")
+            tk.Label(top, text=f"⭐ {rest['rating']}", fg="#FFD700", bg="#1E1E1E",
+                     font=("Helvetica", 10)).pack(side="right")
+            tk.Label(ci, text=rest["tag"], fg="#666", bg="#1E1E1E",
+                     font=("Helvetica", 9)).pack(anchor="w")
+            tk.Label(ci, text=rest["promo"], fg="#06C167", bg="#1E1E1E",
+                     font=("Helvetica", 8, "bold")).pack(anchor="w", pady=(2, 0))
+
+            for widget in [card, ci, top] + list(ci.winfo_children()) + list(top.winfo_children()):
+                widget.bind("<Button-1>",
+                            lambda e, r=rest, win=w:
+                            [win.destroy(), self._ue_open_menu(r)])
+
+    # ── Screen 2: Restaurant menu ──────────────────────────
+    def _ue_open_menu(self, rest):
+        self._restaurant = rest
+        w = SwiftPayApp.make_modal(self, h=720, title=rest["name"])
+        w.configure(bg="#141414")
+
+        # Installment framing banner — items shown as /payment cost
+        tk.Label(w,
+                 text="💳  Prices shown per installment with SwiftPay BNPL",
+                 fg="#06C167", bg="#141414",
+                 font=("Helvetica", 9, "bold")).pack(pady=(8, 2))
+        tk.Label(w, text="Pay in 4 · 0% interest · No credit check*",
+                 fg="#444", bg="#141414",
+                 font=("Helvetica", 8)).pack()
+
+        tk.Label(w, text="MENU", fg="#444", bg="#141414",
+                 font=("Helvetica", 8, "bold")).pack(anchor="w", padx=20, pady=(10, 4))
+
+        for item_name, price in rest["items"]:
+            instalment_price = price / 4
+            row = tk.Frame(w, bg="#1E1E1E",
+                           highlightthickness=1, highlightbackground="#2A2A2A")
+            row.pack(fill="x", padx=18, pady=3)
+            ri = tk.Frame(row, bg="#1E1E1E", padx=14, pady=12)
+            ri.pack(fill="x")
+
+            left = tk.Frame(ri, bg="#1E1E1E"); left.pack(side="left", fill="x", expand=True)
+            tk.Label(left, text=item_name, fg="white", bg="#1E1E1E",
+                     font=("Helvetica", 11)).pack(anchor="w")
+
+            # Installment price BIG, actual price tiny
+            price_row = tk.Frame(left, bg="#1E1E1E"); price_row.pack(anchor="w")
+            tk.Label(price_row, text=f"${instalment_price:.2f}/payment",
+                     fg="#06C167", bg="#1E1E1E",
+                     font=("Helvetica", 11, "bold")).pack(side="left")
+            tk.Label(price_row, text=f"  (${price:.2f} total)",
+                     fg="#444", bg="#1E1E1E",
+                     font=("Helvetica", 8)).pack(side="left")
+
+            # + button
+            add_btn = tk.Label(ri, text=" + ", fg="white", bg="#06C167",
+                               font=("Helvetica", 14, "bold"),
+                               padx=8, pady=4, cursor="hand2")
+            add_btn.pack(side="right")
+            add_btn.bind("<Button-1>",
+                         lambda e, n=item_name, p=price:
+                         self._ue_add_to_cart(n, p))
+
+        # Cart CTA — shows item count and total
+        self._cart_btn_label = tk.StringVar(value="View Cart  (0 items)")
+        cart_btn_frame = tk.Frame(w, bg="#06C167", cursor="hand2")
+        cart_btn_frame.pack(fill="x", padx=18, pady=12, side="bottom")
+        self._cart_btn_lbl_widget = tk.Label(
+            cart_btn_frame, textvariable=self._cart_btn_label,
+            fg="white", bg="#06C167",
+            font=("Helvetica", 12, "bold"), pady=14)
+        self._cart_btn_lbl_widget.pack()
+        self._ue_menu_window = w
+        for widget in (cart_btn_frame, self._cart_btn_lbl_widget):
+            widget.bind("<Button-1>", lambda e: self._ue_open_cart())
+
+    def _ue_add_to_cart(self, name, price):
+        if name in self._cart:
+            qty, p = self._cart[name]
+            self._cart[name] = (qty + 1, p)
+        else:
+            self._cart[name] = (1, price)
+        total_items = sum(q for q, _ in self._cart.values())
+        self._cart_btn_label.set(f"View Cart  ({total_items} item{'s' if total_items != 1 else ''})")
+
+    # ── Screen 3: Cart + checkout ──────────────────────────
+    def _ue_open_cart(self):
+        if not self._cart:
+            return
+        w = SwiftPayApp.make_modal(self, h=720, title="Your Cart")
+        w.configure(bg="#141414")
+
+        subtotal    = sum(p * q for q, p in self._cart.values())
+        delivery    = 1.99
+        service_fee = round(subtotal * 0.15, 2)
+        total       = subtotal + delivery + service_fee
+
+        tk.Label(w, text="Order Summary", fg="white", bg="#141414",
+                 font=("Helvetica", 15, "bold")).pack(pady=(18, 10), anchor="w", padx=20)
+
+        for item_name, (qty, price) in self._cart.items():
+            row = tk.Frame(w, bg="#1E1E1E"); row.pack(fill="x", padx=18, pady=2)
+            ri = tk.Frame(row, bg="#1E1E1E", padx=14, pady=10); ri.pack(fill="x")
+            tk.Label(ri, text=f"{qty}x  {item_name}", fg="#CCC", bg="#1E1E1E",
+                     font=("Helvetica", 10)).pack(side="left")
+            tk.Label(ri, text=f"${price*qty:.2f}", fg="white", bg="#1E1E1E",
+                     font=("Helvetica", 10, "bold")).pack(side="right")
+
+        # Fee breakdown
+        sep = tk.Frame(w, bg="#2A2A2A", height=1); sep.pack(fill="x", padx=18, pady=8)
+        for label, val in [("Subtotal", f"${subtotal:.2f}"),
+                            ("Delivery fee", f"${delivery:.2f}"),
+                            ("Service fee", f"${service_fee:.2f}")]:
+            fr = tk.Frame(w, bg="#141414"); fr.pack(fill="x", padx=24, pady=2)
+            tk.Label(fr, text=label, fg="#666", bg="#141414",
+                     font=("Helvetica", 10)).pack(side="left")
+            tk.Label(fr, text=val, fg="#888", bg="#141414",
+                     font=("Helvetica", 10)).pack(side="right")
+
+        sep2 = tk.Frame(w, bg="#2A2A2A", height=1); sep2.pack(fill="x", padx=18, pady=8)
+        total_row = tk.Frame(w, bg="#141414"); total_row.pack(fill="x", padx=24)
+        tk.Label(total_row, text="Total", fg="white", bg="#141414",
+                 font=("Helvetica", 12, "bold")).pack(side="left")
+        tk.Label(total_row, text=f"${total:.2f}", fg="white", bg="#141414",
+                 font=("Helvetica", 12, "bold")).pack(side="right")
+
+        # "Split the service fee too" — debt stacking teaser
+        split_f = tk.Frame(w, bg="#1A2A1A",
+                           highlightthickness=1, highlightbackground="#2A3A2A")
+        split_f.pack(fill="x", padx=18, pady=10)
+        tk.Label(split_f,
+                 text=f"💡  Also split your ${service_fee:.2f} service fee into 4 payments of ${service_fee/4:.2f}",
+                 fg="#06C167", bg="#1A2A1A",
+                 font=("Helvetica", 9), padx=12, pady=8,
+                 wraplength=320).pack(anchor="w")
+
+        # Payment CTA
+        btn_f = tk.Frame(w, bg="#06C167", cursor="hand2")
+        btn_f.pack(fill="x", padx=18, pady=8)
+        btn_l = tk.Label(btn_f,
+                          text=f"Go to Payment  →  ${total:.2f}",
+                          fg="white", bg="#06C167",
+                          font=("Helvetica", 12, "bold"), pady=14)
+        btn_l.pack()
+        for widget in (btn_f, btn_l):
+            widget.bind("<Button-1>",
+                        lambda e, t=total, d=delivery, sf=service_fee:
+                        [w.destroy(), self._klarna_payment_screen(t, d, sf)])
+
+    # ── Screen 4: Klarna BNPL payment screen ──────────────
+    def _klarna_payment_screen(self, total, delivery, service_fee):
+        w = SwiftPayApp.make_modal(self, h=720, title="Payment")
+        w.configure(bg="#141414")
+
+        # Klarna logo area
+        tk.Label(w, text="K", fg="white", bg="#FFB3C7",
+                 font=("Helvetica", 22, "bold"),
+                 padx=10, pady=4).pack(pady=(18, 2))
+        tk.Label(w, text="Powered by Klarna", fg="#888", bg="#141414",
+                 font=("Helvetica", 9)).pack()
+
+        # Payment method tabs — BNPL pre-selected, Pay Now deprioritised
+        tab_frame = tk.Frame(w, bg="#1E1E1E",
+                             highlightthickness=1, highlightbackground="#333")
+        tab_frame.pack(fill="x", padx=18, pady=12)
+        tf = tk.Frame(tab_frame, bg="#1E1E1E"); tf.pack(fill="x")
+
+        self._pay_mode = tk.StringVar(value="bnpl")   # BNPL pre-selected
+
+        # Pay in 4 tab — active, green
+        pay4_tab = tk.Frame(tf, bg="#06C167", cursor="hand2", pady=10)
+        pay4_tab.pack(side="left", fill="x", expand=True)
+        tk.Label(pay4_tab, text="Pay in 4", fg="white", bg="#06C167",
+                 font=("Helvetica", 11, "bold")).pack()
+        tk.Label(pay4_tab, text="0% interest", fg="#D0FFE8", bg="#06C167",
+                 font=("Helvetica", 8)).pack()
+
+        # Pay Now tab — muted gray, visually deprioritised
+        paynow_tab = tk.Frame(tf, bg="#2A2A2A", cursor="hand2", pady=10)
+        paynow_tab.pack(side="left", fill="x", expand=True)
+        tk.Label(paynow_tab, text="Pay Now", fg="#555", bg="#2A2A2A",
+                 font=("Helvetica", 11)).pack()
+        tk.Label(paynow_tab, text=f"${total:.2f}", fg="#444", bg="#2A2A2A",
+                 font=("Helvetica", 8)).pack()
+
+        # Pay in 4 breakdown — first payment today, small numbers
+        instalment = round(total / 4, 2)
+        schedule_f = tk.Frame(w, bg="#1E1E1E",
+                              highlightthickness=1, highlightbackground="#2A2A2A")
+        schedule_f.pack(fill="x", padx=18, pady=6)
+        si = tk.Frame(schedule_f, bg="#1E1E1E", padx=16, pady=14)
+        si.pack(fill="x")
+        tk.Label(si, text="YOUR PAYMENT SCHEDULE", fg="#06C167", bg="#1E1E1E",
+                 font=("Helvetica", 8, "bold")).pack(anchor="w")
+
+        today = "Today"
+        for i, label in enumerate([today, "2 weeks", "4 weeks", "6 weeks"]):
+            pr = tk.Frame(si, bg="#1E1E1E"); pr.pack(fill="x", pady=3)
+            dot_col = "#06C167" if i == 0 else "#444"
+            tk.Label(pr, text="●", fg=dot_col, bg="#1E1E1E",
+                     font=("Helvetica", 10)).pack(side="left", padx=(0, 8))
+            tk.Label(pr, text=label, fg="#888" if i > 0 else "white",
+                     bg="#1E1E1E", font=("Helvetica", 10)).pack(side="left")
+            tk.Label(pr, text=f"${instalment:.2f}",
+                     fg="#06C167" if i == 0 else "#666",
+                     bg="#1E1E1E",
+                     font=("Helvetica", 10, "bold" if i == 0 else "normal")).pack(side="right")
+
+        tk.Frame(si, bg="#2A2A2A", height=1).pack(fill="x", pady=6)
+        total_row = tk.Frame(si, bg="#1E1E1E"); total_row.pack(fill="x")
+        tk.Label(total_row, text="Total", fg="#555", bg="#1E1E1E",
+                 font=("Helvetica", 10)).pack(side="left")
+        tk.Label(total_row, text=f"${total:.2f}", fg="white", bg="#1E1E1E",
+                 font=("Helvetica", 10, "bold")).pack(side="right")
+
+        # Eligibility check loading animation (fake soft credit pull)
+        elig_f = tk.Frame(w, bg="#141414"); elig_f.pack(pady=4)
+        self._elig_var = tk.StringVar(value="✅  Checking your eligibility...")
+        tk.Label(elig_f, textvariable=self._elig_var,
+                 fg="#06C167", bg="#141414",
+                 font=("Helvetica", 9)).pack()
+        # Simulate "check complete" after 1.5s
+        w.after(1500, lambda: self._elig_var.set("✅  Approved! No impact to credit score.*"))
+
+        # Confirm CTA
+        confirm_f = tk.Frame(w, bg="#06C167", cursor="hand2")
+        confirm_f.pack(fill="x", padx=18, pady=10)
+        confirm_l = tk.Label(confirm_f,
+                              text=f"Confirm — Pay ${instalment:.2f} today",
+                              fg="white", bg="#06C167",
+                              font=("Helvetica", 12, "bold"), pady=14)
+        confirm_l.pack()
+        for widget in (confirm_f, confirm_l):
+            widget.bind("<Button-1>",
+                        lambda e, i=instalment, t=total:
+                        [w.destroy(), self._klarna_confirm(i, t)])
+
+        # Dark pattern fine print stack — all near-invisible
+        fine_print = (
+            "*Eligibility check uses a soft credit inquiry that does not affect your "
+            "credit score. However, missed payments are reported to TransUnion and may "
+            "negatively affect your credit score. Late fee: up to $7.00 per missed "
+            "payment. By confirming, a Klarna account is created in your name and you "
+            "agree to Klarna's Terms of Service. SwiftPay BNPL is not a loan; it is "
+            "a deferred payment agreement. 0% APR applies to Pay in 4 only. Monthly "
+            "Financing options are available at 0%–33.99% APR. On-time payments are "
+            "not currently reported to credit bureaus."
+        )
+        tk.Label(w, text=fine_print, fg="#1E1E1E", bg="#141414",
+                 font=("Helvetica", 6), wraplength=350,
+                 justify="center").pack(side="bottom", padx=14, pady=8)
+
+    # ── Screen 5: BNPL confirmed + monthly financing upsell ─
+    def _klarna_confirm(self, instalment, total):
+        # Deduct first instalment from balance
+        self.user.balance -= instalment
+        self.refresh_balance()
+        self.log(f"BNPL (Klarna) 1st Payment: -${instalment:.2f}", False)
+        self.log(f"3 payments of ${instalment:.2f} remaining", False)
+        self.show_toast(f"Order placed! Paid ${instalment:.2f} today 🎉")
+
+        # Monthly financing upsell — immediately after confirmation
+        w = SwiftPayApp.make_modal(self, h=560, title="A Better Way to Pay?")
+        w.configure(bg="#141414")
+
+        tk.Label(w, text="More Flexibility Available",
+                 fg="white", bg="#141414",
+                 font=("Helvetica", 17, "bold")).pack(pady=(28, 6))
+        tk.Label(w,
+                 text=f"Instead of 4 payments of ${instalment:.2f},\n"
+                      "spread your balance over 6 months.",
+                 fg="#888", bg="#141414",
+                 font=("Helvetica", 10), justify="center").pack()
+
+        card = tk.Frame(w, bg="#1E1E1E",
+                        highlightthickness=1, highlightbackground="#2A2A2A")
+        card.pack(fill="x", padx=24, pady=18)
+        ci = tk.Frame(card, bg="#1E1E1E", padx=18, pady=16); ci.pack(fill="x")
+        tk.Label(ci, text="Monthly Financing", fg="#FFB3C7", bg="#1E1E1E",
+                 font=("Helvetica", 12, "bold")).pack(anchor="w")
+        monthly = round(total / 6 * 1.15, 2)  # hidden 15% interest baked in
+        tk.Label(ci, text=f"${monthly:.2f} / month", fg="white", bg="#1E1E1E",
+                 font=("Helvetica", 24, "bold")).pack(anchor="w")
+        tk.Label(ci, text="for 6 months  ·  Low monthly rate",
+                 fg="#555", bg="#1E1E1E", font=("Helvetica", 9)).pack(anchor="w")
+        # APR buried as tiny subscript
+        actual_apr = 33.99
+        tk.Label(ci, text=f"Subject to {actual_apr}% APR. See terms.",
+                 fg="#2A2A2A", bg="#1E1E1E",
+                 font=("Helvetica", 6)).pack(anchor="w", pady=(4, 0))
+
+        SwiftPayApp.flat_btn(w, "Switch to Monthly Financing", "#FFB3C7", "#000",
+                             lambda: [w.destroy(),
+                                      self.show_toast("Switched to Monthly Financing.", "#FFB3C7")])
+
+        skip_f = tk.Frame(w, bg="#141414", cursor="hand2"); skip_f.pack(pady=6)
+        skip_l = tk.Label(skip_f, text="No thanks, keep my Pay in 4",
+                          fg="#2A2A2A", bg="#141414",
+                          font=("Helvetica", 9, "underline"))
+        skip_l.pack()
+        for widget in (skip_f, skip_l):
+            widget.bind("<Button-1>", lambda e: w.destroy())
+
+        # Schedule remaining auto-debits (simulated)
+        remaining_payments = [instalment] * 3
+        for i, pmt in enumerate(remaining_payments, 1):
+            delay = (i * 14) * 1000   # 14-day intervals compressed for demo
+            self.after(delay + 8000,
+                       lambda p=pmt, idx=i:
+                       self._klarna_auto_debit(p, idx))
+
+    def _klarna_auto_debit(self, amount, payment_num):
+        """Simulates Klarna silently debiting the next instalment."""
+        self.user.balance -= amount
+        self.refresh_balance()
+        self.log(f"Klarna Auto-Debit #{payment_num}: -${amount:.2f}", False)
+        self._show_push(
+            f"⏰  Klarna payment #{payment_num} of ${amount:.2f} auto-debited.",
+            "#FFB3C7")
 
     # ════════════════════════════════════════════════════════
     #  CASINO — rigged blackjack
