@@ -120,77 +120,374 @@ class DashboardPage(tk.Frame):
         l.bind("<Button-1>", lambda e: cmd())
         return f
 
-    def show_tip_modal(self, amount):
-        self.modal = tk.Toplevel(self)
-        self.modal.geometry("380x550")
-        self.modal.configure(bg="#1E1E1E")
-        self.modal.transient(self)
-        self.modal.grab_set()
-
-        tk.Label(self.modal, text="Pay it Forward", fg="#00D084", bg="#1E1E1E", font=("Helvetica", 20, "bold")).pack(pady=(30, 10))
-        guilt_text = ("Most SwiftPay members tip $5 or more\nto help keep this service interest-free\n"
-                      "for the community.")
-        tk.Label(self.modal, text=guilt_text, fg="#AAA", bg="#1E1E1E", font=("Helvetica", 10)).pack(pady=5)
-
-        tk.Label(self.modal, text="RECOMMENDED FOR YOU", fg="#7042F4", bg="#1E1E1E", font=("Helvetica", 8, "bold")).pack(pady=(20, 0))
-        self.create_tip_option("$10 Tip", "#7042F4", 10, amount, is_recommended=True)
-        self.create_tip_option("$5 Tip", "#333", 5, amount)
-        self.create_tip_option("$2 Tip", "#333", 2, amount)
-
-        tk.Label(self.modal, text="I don't want to support the community", fg="#444", bg="#1E1E1E", font=("Helvetica", 8)).pack(pady=(20, 0))
-        f_no = tk.Frame(self.modal, bg="#1E1E1E", cursor="hand2")
-        f_no.pack(pady=5)
-        l_no = tk.Label(f_no, text="Skip Tip & Continue", fg="#666", bg="#1E1E1E",
-                        font=("Helvetica", 10, "underline"), pady=5)
-        l_no.pack()
-
-        def skip():
-            self.current_tip = 0
-            self.modal.destroy()
-            self.execute_cash_out(amount)
-
-        f_no.bind("<Button-1>", lambda e: skip())
-        l_no.bind("<Button-1>", lambda e: skip())
-
-    def create_tip_option(self, text, color, tip_val, original_amt, is_recommended=False):
-        highlight = "#7042F4" if is_recommended else "#333"
-        f = tk.Frame(self.modal, bg=highlight, cursor="hand2", padx=2 if is_recommended else 0, pady=2 if is_recommended else 0)
-        f.pack(pady=5, padx=50, fill="x")
-        l = tk.Label(f, text=text, fg="white", bg=color, font=("Helvetica", 11, "bold"), pady=15)
-        l.pack(fill="x")
-
-        def select_tip():
-            self.current_tip = tip_val
-            self.modal.destroy()
-            self.show_notification(f"Generous! ${tip_val} tip added.", "#7042F4")
-            self.execute_cash_out(original_amt)
-
-        f.bind("<Button-1>", lambda e: select_tip())
-        l.bind("<Button-1>", lambda e: select_tip())
+    # ---------------------------------------------------------------
+    # CASH OUT FLOW  (Earnin-style dark pattern sequence)
+    # Screen 1: Amount + "your money" framing
+    # Screen 2: Speed selector — standard buried, Lightning upsell
+    # Screen 3: Tip screen — default pre-selected, shame on opt-out
+    # Screen 4: "Review" — repayment buried in fine print
+    # ---------------------------------------------------------------
 
     def do_loan(self):
         try:
             amt = float(self.amount_entry.get())
-            self.show_tip_modal(amt)
+            if amt <= 0:
+                self.show_notification("Enter an amount", "#FF4500")
+                return
+            self._open_cashout_flow(amt)
         except ValueError:
             self.show_notification("Invalid Amount", "#FF4500")
 
-    def execute_cash_out(self, amt):
-        self.show_notification("Processing Transfer...", "#7042F4")
+    def _make_modal(self, title_text):
+        """Helper: creates a consistent dark modal window."""
+        w = tk.Toplevel(self)
+        w.geometry("390x680")
+        w.configure(bg="#121212")
+        w.transient(self)
+        w.grab_set()
+        w.resizable(False, False)
 
-        def finish():
-            total_deduction = self.current_tip
-            if self.user.withdraw(total_deduction):
-                self.user.deposit(amt)
-                self.update_ui()
-                self.log_act(f"Cash Out: +${amt:,.2f}", True)
-                if self.current_tip > 0:
-                    self.log_act(f"Community Tip: -${self.current_tip:,.2f}", False)
-                self.show_notification(f"Success! ${amt} sent to bank.")
-            else:
-                self.show_notification("Insufficient funds for tip!", "#FF4500")
+        # Header bar
+        bar = tk.Frame(w, bg="#1A1A1A", pady=14)
+        bar.pack(fill="x")
+        tk.Label(bar, text=title_text, fg="white", bg="#1A1A1A",
+                 font=("Helvetica", 13, "bold")).pack()
+        return w
 
-        self.after(1500, finish)
+    # ── SCREEN 1: Amount confirmation ──────────────────────────────
+    def _open_cashout_flow(self, amt):
+        w = self._make_modal("Cash Out")
+        self._cashout_window = w
+
+        # "Your money" framing — never says loan
+        tk.Label(w, text="Access Your Earned Pay", fg="#00D084", bg="#121212",
+                 font=("Helvetica", 20, "bold")).pack(pady=(30, 4))
+        tk.Label(w, text="This is money you've already worked for.\nNo interest. No credit check.",
+                 fg="#888", bg="#121212", font=("Helvetica", 10), justify="center").pack()
+
+        # Big amount display
+        amt_frame = tk.Frame(w, bg="#1E1E1E", pady=30)
+        amt_frame.pack(fill="x", padx=25, pady=25)
+        tk.Label(amt_frame, text=f"${amt:,.2f}", fg="white", bg="#1E1E1E",
+                 font=("Helvetica", 40, "bold")).pack()
+        tk.Label(amt_frame, text="available from your current pay period",
+                 fg="#555", bg="#1E1E1E", font=("Helvetica", 9)).pack()
+
+        # Social proof ticker — fake urgency
+        tk.Label(w, text="🔥  312 members cashed out in the last hour",
+                 fg="#00D084", bg="#121212", font=("Helvetica", 9)).pack(pady=(0, 20))
+
+        # CTA
+        self._make_flow_btn(w, "Get My Money →", "#00D084", "black",
+                            lambda: [w.destroy(), self._screen_speed(amt)])
+
+        # Fine-print repayment disclosure — tiny, at bottom
+        tk.Label(w,
+                 text=f"${amt:,.2f} will be automatically debited from your linked\n"
+                      "bank account on your next payday. Missed payday\n"
+                      "may result in overdraft fees charged by your bank.",
+                 fg="#333", bg="#121212", font=("Helvetica", 7),
+                 justify="center").pack(side="bottom", pady=10)
+
+    # ── SCREEN 2: Speed selector ───────────────────────────────────
+    def _screen_speed(self, amt):
+        w = self._make_modal("Choose Transfer Speed")
+        self._speed_window = w
+
+        tk.Label(w, text="When do you need it?", fg="white", bg="#121212",
+                 font=("Helvetica", 17, "bold")).pack(pady=(25, 5))
+
+        # Lightning Speed — visually dominant, pre-highlighted
+        ls_outer = tk.Frame(w, bg="#7042F4", padx=2, pady=2)
+        ls_outer.pack(fill="x", padx=25, pady=(20, 6))
+        ls_inner = tk.Frame(ls_outer, bg="#1E1E1E", padx=15, pady=15, cursor="hand2")
+        ls_inner.pack(fill="x")
+
+        top_row = tk.Frame(ls_inner, bg="#1E1E1E")
+        top_row.pack(fill="x")
+        tk.Label(top_row, text="⚡  Lightning Speed", fg="white", bg="#1E1E1E",
+                 font=("Helvetica", 13, "bold")).pack(side="left")
+        tk.Label(top_row, text="RECOMMENDED", fg="#7042F4", bg="#1E1E1E",
+                 font=("Helvetica", 8, "bold")).pack(side="right")
+
+        tk.Label(ls_inner, text="Arrives in ~30 minutes", fg="#00D084", bg="#1E1E1E",
+                 font=("Helvetica", 10)).pack(anchor="w")
+
+        # Fee shown as flat dollar — APR never mentioned
+        ls_fee = 3.99 if amt <= 75 else 5.99
+        tk.Label(ls_inner, text=f"Small fee: ${ls_fee:.2f}", fg="#AAA", bg="#1E1E1E",
+                 font=("Helvetica", 9)).pack(anchor="w")
+
+        ls_inner.bind("<Button-1>", lambda e: [w.destroy(), self._screen_tip(amt, ls_fee, fast=True)])
+        for child in ls_inner.winfo_children():
+            child.bind("<Button-1>", lambda e: [w.destroy(), self._screen_tip(amt, ls_fee, fast=True)])
+        for child in top_row.winfo_children():
+            child.bind("<Button-1>", lambda e: [w.destroy(), self._screen_tip(amt, ls_fee, fast=True)])
+
+        # Standard — visually de-emphasized, slower, buried below fold
+        std_frame = tk.Frame(w, bg="#1A1A1A", padx=15, pady=12, cursor="hand2")
+        std_frame.pack(fill="x", padx=25, pady=6)
+        tk.Label(std_frame, text="Standard Transfer", fg="#888", bg="#1A1A1A",
+                 font=("Helvetica", 11)).pack(anchor="w")
+        tk.Label(std_frame, text="Arrives in 1–3 business days", fg="#555", bg="#1A1A1A",
+                 font=("Helvetica", 9)).pack(anchor="w")
+        tk.Label(std_frame, text="Free", fg="#555", bg="#1A1A1A",
+                 font=("Helvetica", 9)).pack(anchor="w")
+
+        std_frame.bind("<Button-1>", lambda e: [w.destroy(), self._screen_tip(amt, 0, fast=False)])
+        for child in std_frame.winfo_children():
+            child.bind("<Button-1>", lambda e: [w.destroy(), self._screen_tip(amt, 0, fast=False)])
+
+        # Effective APR — hidden in near-invisible fine print
+        if ls_fee > 0:
+            apr = round((ls_fee / amt) * (365 / 14) * 100)
+            tk.Label(w, text=f"*Lightning Speed fee equivalent to {apr}% APR on a 14-day term.",
+                     fg="#2A2A2A", bg="#121212", font=("Helvetica", 6),
+                     justify="center").pack(side="bottom", pady=8)
+
+    # ── SCREEN 3: Tip screen ───────────────────────────────────────
+    def _screen_tip(self, amt, speed_fee, fast):
+        w = self._make_modal("Support the Community")
+        self._tip_window = w
+
+        tk.Label(w, text="Pay It Forward 💚", fg="#00D084", bg="#121212",
+                 font=("Helvetica", 20, "bold")).pack(pady=(28, 4))
+
+        guilt = ("SwiftPay is kept interest-free by members\n"
+                 "like you. Most members tip $9 or more.")
+        tk.Label(w, text=guilt, fg="#888", bg="#121212",
+                 font=("Helvetica", 10), justify="center").pack(pady=(0, 8))
+
+        # Tip var — DEFAULT pre-set to $9 (dark pattern: user must actively zero it)
+        self._tip_var = tk.IntVar(value=9)
+
+        options = [
+            ("$14  — Super Supporter 🏆", 14, "#7042F4", True),
+            ("$9   — Community Member  ✓", 9,  "#7042F4", True),   # pre-selected
+            ("$5   — Occasional Helper",    5,  "#333",    False),
+            ("$2   — Minimal Support",       2,  "#333",    False),
+        ]
+
+        for label, val, color, highlighted in options:
+            border_color = "#7042F4" if highlighted else "#2A2A2A"
+            outer = tk.Frame(w, bg=border_color, padx=1, pady=1)
+            outer.pack(fill="x", padx=30, pady=3)
+            inner = tk.Frame(outer, bg="#1E1E1E", padx=12, pady=10, cursor="hand2")
+            inner.pack(fill="x")
+
+            row = tk.Frame(inner, bg="#1E1E1E")
+            row.pack(fill="x")
+
+            # Radio dot
+            dot_color = "#7042F4" if val == 9 else "#444"
+            dot = tk.Label(row, text="●", fg=dot_color, bg="#1E1E1E",
+                           font=("Helvetica", 14))
+            dot.pack(side="left", padx=(0, 8))
+
+            tk.Label(row, text=label, fg="white" if highlighted else "#888",
+                     bg="#1E1E1E", font=("Helvetica", 10,
+                     "bold" if highlighted else "normal")).pack(side="left")
+
+            def _select(v=val, o=outer, d=dot):
+                self._tip_var.set(v)
+                # Reset all dots
+                for widget in w.winfo_children():
+                    self._reset_tip_dots(widget)
+                d.config(fg="#7042F4")
+
+            inner.bind("<Button-1>", lambda e, v=val: self._tip_var.set(v))
+            row.bind("<Button-1>",   lambda e, fn=_select: fn())
+            dot.bind("<Button-1>",   lambda e, fn=_select: fn())
+            for c in row.winfo_children():
+                c.bind("<Button-1>", lambda e, fn=_select: fn())
+
+        # Confirm CTA
+        self._make_flow_btn(w, "Confirm & Continue →", "#00D084", "black",
+                            lambda: [w.destroy(),
+                                     self._screen_review(amt, speed_fee,
+                                                         self._tip_var.get(), fast)])
+
+        # Shame opt-out — tiny, gray, negative framing
+        tk.Label(w, text="I don't care about keeping this service free",
+                 fg="#2D2D2D", bg="#121212", font=("Helvetica", 8)).pack(pady=(12, 0))
+
+        f_skip = tk.Frame(w, bg="#121212", cursor="hand2")
+        f_skip.pack()
+        l_skip = tk.Label(f_skip, text="Skip — $0 tip", fg="#3A3A3A",
+                          bg="#121212", font=("Helvetica", 9, "underline"))
+        l_skip.pack()
+        f_skip.bind("<Button-1>", lambda e: [w.destroy(),
+                                             self._screen_review(amt, speed_fee, 0, fast)])
+        l_skip.bind("<Button-1>", lambda e: [w.destroy(),
+                                             self._screen_review(amt, speed_fee, 0, fast)])
+
+    def _reset_tip_dots(self, widget):
+        """Walk widget tree resetting dot colors."""
+        try:
+            if isinstance(widget, tk.Label) and widget.cget("text") == "●":
+                widget.config(fg="#444")
+        except Exception:
+            pass
+        for child in widget.winfo_children():
+            self._reset_tip_dots(child)
+
+    # ── SCREEN 4: Review & confirm ─────────────────────────────────
+    def _screen_review(self, amt, speed_fee, tip, fast):
+        w = self._make_modal("Review & Confirm")
+        self._review_window = w
+
+        tk.Label(w, text="Almost there!", fg="white", bg="#121212",
+                 font=("Helvetica", 18, "bold")).pack(pady=(30, 20))
+
+        # Summary card — fees presented as separate line items, total buried
+        card = tk.Frame(w, bg="#1E1E1E", padx=20, pady=20)
+        card.pack(fill="x", padx=25)
+
+        def row(label, value, value_color="white"):
+            f = tk.Frame(card, bg="#1E1E1E")
+            f.pack(fill="x", pady=4)
+            tk.Label(f, text=label, fg="#888", bg="#1E1E1E",
+                     font=("Helvetica", 10)).pack(side="left")
+            tk.Label(f, text=value, fg=value_color, bg="#1E1E1E",
+                     font=("Helvetica", 10, "bold")).pack(side="right")
+
+        row("Cash Out Amount",  f"${amt:,.2f}", "#00D084")
+        if speed_fee > 0:
+            row("⚡ Lightning Speed", f"${speed_fee:.2f}", "#7042F4")
+        if tip > 0:
+            row("💚 Community Tip",   f"${tip:.2f}", "#7042F4")
+
+        # Separator
+        tk.Frame(card, bg="#333", height=1).pack(fill="x", pady=8)
+
+        total_charges = speed_fee + tip
+        row("You receive",      f"${amt:,.2f}", "#00D084")
+        row("Total charges",    f"${total_charges:.2f}", "#FF4500")
+
+        # Repayment — framed as "automatic" not as a debt obligation
+        speed_str = "~30 min" if fast else "1–3 business days"
+        tk.Label(w, text=f"Arriving: {speed_str}", fg="#888", bg="#121212",
+                 font=("Helvetica", 10)).pack(pady=(18, 2))
+
+        # Balance Shield upsell — offered right before confirmation
+        shield_frame = tk.Frame(w, bg="#1A1A1A", padx=15, pady=12)
+        shield_frame.pack(fill="x", padx=25, pady=10)
+        self._shield_var = tk.BooleanVar(value=True)   # pre-checked
+        sh_row = tk.Frame(shield_frame, bg="#1A1A1A")
+        sh_row.pack(fill="x")
+        tk.Checkbutton(sh_row, variable=self._shield_var, bg="#1A1A1A",
+                       activebackground="#1A1A1A", fg="#00D084",
+                       selectcolor="#1A1A1A").pack(side="left")
+        tk.Label(sh_row, text="Enable Balance Shield  (+$1.99/mo)",
+                 fg="#AAA", bg="#1A1A1A", font=("Helvetica", 10)).pack(side="left")
+        tk.Label(shield_frame,
+                 text="Auto-advances $100 when balance drops below $50.\nHelps you avoid overdraft fees.",
+                 fg="#555", bg="#1A1A1A", font=("Helvetica", 8),
+                 justify="left").pack(anchor="w", pady=(4, 0))
+
+        # Final CTA
+        self._make_flow_btn(w, "Confirm Cash Out", "#00D084", "black",
+                            lambda: [w.destroy(),
+                                     self._execute_earnin_cashout(amt, speed_fee, tip)])
+
+        # Repayment fine print — barely readable
+        tk.Label(w,
+                 text=f"By confirming, you authorize SwiftPay to debit ${amt + total_charges:,.2f}\n"
+                      "from your linked account on your next scheduled payday.\n"
+                      "SwiftPay is not responsible for third-party overdraft fees.",
+                 fg="#2B2B2B", bg="#121212", font=("Helvetica", 6),
+                 justify="center").pack(side="bottom", pady=8)
+
+    # ── Final execution ────────────────────────────────────────────
+    def _execute_earnin_cashout(self, amt, speed_fee, tip):
+        total_fee = speed_fee + tip
+        # Deduct fees now; deposit cash amount
+        self.user.balance -= total_fee
+        self.user.deposit(amt)
+        self.update_ui()
+
+        speed_label = "⚡ Lightning" if speed_fee > 0 else "Standard"
+        self.log_act(f"Cash Out ({speed_label}): +${amt:,.2f}", True)
+        if total_fee > 0:
+            self.log_act(f"Fees + Tip: -${total_fee:.2f}", False)
+
+        self.show_notification(f"${amt:,.2f} on its way!", "#00D084")
+
+        # Schedule fake "repayment debit" after 4 seconds to show debt cycle
+        self.after(4000, lambda: self._simulate_repayment(amt, total_fee))
+
+    def _simulate_repayment(self, amt, fees):
+        """
+        Simulates the auto-debit on 'payday' — balance drops, 
+        then Balance Shield immediately fires another advance offer.
+        """
+        self.user.balance -= amt
+        self.update_ui()
+        self.log_act(f"Auto-Repayment Debited: -${amt:,.2f}", False)
+        self.show_notification("Repayment auto-debited on payday.", "#FF4500")
+
+        # If balance drops low, fire Balance Shield upsell after short delay
+        if self.user.balance < 200:
+            self.after(3500, self._balance_shield_prompt)
+
+    def _balance_shield_prompt(self):
+        """
+        Balance Shield: after repayment empties account, immediately 
+        offers another advance — completing the debt cycle.
+        """
+        w = tk.Toplevel(self)
+        w.geometry("390x420")
+        w.configure(bg="#121212")
+        w.transient(self)
+        w.grab_set()
+
+        tk.Label(w, text="⚠️  Low Balance Alert", fg="#FF4500", bg="#121212",
+                 font=("Helvetica", 16, "bold")).pack(pady=(35, 8))
+        tk.Label(w, text=f"Your balance is ${self.user.balance:,.2f}.\nYou may be at risk of overdraft fees.",
+                 fg="#AAA", bg="#121212", font=("Helvetica", 10),
+                 justify="center").pack(pady=(0, 20))
+
+        # Shield advance offer — framed as protection, not a new loan
+        offer = tk.Frame(w, bg="#1E1E1E", padx=20, pady=20)
+        offer.pack(fill="x", padx=25)
+        tk.Label(offer, text="Balance Shield has your back 🛡️", fg="#00D084",
+                 bg="#1E1E1E", font=("Helvetica", 12, "bold")).pack()
+        tk.Label(offer, text="Automatically advance $100 to cover\nyour expenses until next payday.",
+                 fg="#888", bg="#1E1E1E", font=("Helvetica", 9),
+                 justify="center").pack(pady=8)
+
+        self._make_flow_btn(w, "Activate Shield — Get $100", "#00D084", "black",
+                            lambda: [w.destroy(), self._trigger_shield_advance()])
+
+        f_no = tk.Frame(w, bg="#121212", cursor="hand2")
+        f_no.pack(pady=8)
+        l_no = tk.Label(f_no, text="No thanks, I'll risk the overdraft fee",
+                        fg="#333", bg="#121212",
+                        font=("Helvetica", 8, "underline"), cursor="hand2")
+        l_no.pack()
+        f_no.bind("<Button-1>", lambda e: w.destroy())
+        l_no.bind("<Button-1>", lambda e: w.destroy())
+
+    def _trigger_shield_advance(self):
+        """Shield advance — another loan disguised as safety."""
+        self.user.deposit(100)
+        self.user.balance -= 1.99   # monthly fee silently applied
+        self.update_ui()
+        self.log_act("Balance Shield Advance: +$100.00", True)
+        self.log_act("Balance Shield Fee: -$1.99", False)
+        self.show_notification("Shield activated! $100 advanced.", "#00D084")
+
+    # ── Shared UI helper ───────────────────────────────────────────
+    def _make_flow_btn(self, parent, text, bg, fg, cmd):
+        f = tk.Frame(parent, bg=bg, cursor="hand2")
+        f.pack(pady=10, padx=30, fill="x")
+        l = tk.Label(f, text=text, fg=fg, bg=bg,
+                     font=("Helvetica", 12, "bold"), pady=14)
+        l.pack()
+        f.bind("<Button-1>", lambda e: cmd())
+        l.bind("<Button-1>", lambda e: cmd())
+
+
 
     def show_notification(self, message, color="#00D084"):
         self.status_bar.config(text=message, bg=color)
