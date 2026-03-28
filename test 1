@@ -58,7 +58,6 @@ class LoginPage(tk.Frame):
         self.pin_entry.pack(pady=30, padx=60, ipady=10)
         self.pin_entry.insert(0, "1234")
 
-        # Styled Login Button
         btn = tk.Frame(self, bg="#00D084", cursor="hand2")
         btn.pack(pady=20, padx=80, fill="x")
         lbl = tk.Label(btn, text="LOG IN", fg="black", bg="#00D084", font=("Helvetica", 12, "bold"), pady=15)
@@ -72,7 +71,7 @@ class LoginPage(tk.Frame):
         else:
             messagebox.showerror("Error", "Try PIN: 1234")
 
-# --- 4. DASHBOARD PAGE (The New Code You Asked About) ---
+# --- 4. DASHBOARD PAGE ---
 class DashboardPage(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent, bg="#121212")
@@ -80,15 +79,12 @@ class DashboardPage(tk.Frame):
         self.user = controller.user
         self.current_tip = 0
 
-        # 1. Top Status Notification Bar
         self.status_bar = tk.Label(self, text="", fg="white", bg="#00D084", font=("Helvetica", 10, "bold"), pady=5)
         self.status_bar.pack(fill="x")
-        self.status_bar.pack_forget() 
+        self.status_bar.pack_forget()
 
-        # 2. Header
         tk.Label(self, text=f"Welcome back, {self.user.name}", fg="#888", bg="#121212", font=("Helvetica", 10)).pack(pady=(15, 0))
 
-        # 3. Balance Card
         self.card = tk.Frame(self, bg="#1E1E1E", padx=20, pady=25, highlightthickness=1, highlightbackground="#333")
         self.card.pack(padx=25, pady=15, fill="x")
         
@@ -97,104 +93,21 @@ class DashboardPage(tk.Frame):
         self.lbl_balance = tk.Label(self.card, textvariable=self.balance_var, fg="white", bg="#1E1E1E", font=("Helvetica", 32, "bold"))
         self.lbl_balance.pack()
 
-        # 4. Input Section
         tk.Label(self, text="Set Amount", fg="#AAA", bg="#121212", font=("Helvetica", 9, "bold")).pack(pady=(5, 5))
         self.amount_entry = tk.Entry(self, justify="center", font=("Helvetica", 22), bg="#000", fg="#00D084", borderwidth=0, insertbackground="white")
         self.amount_entry.insert(0, "100")
         self.amount_entry.pack(pady=5, padx=60, ipady=10)
 
-        # 5. Primary Action Buttons
         self.create_modern_btn("Cash Out Now", "#7042F4", self.do_loan)
         self.create_modern_btn("Buy Now, Pay Later", "#333333", self.do_bnpl)
         self.create_modern_btn("Instant Gamble", "#FF4500", self.do_gamble)
 
-        # 6. Activity Feed
         tk.Label(self, text="RECENT ACTIVITY", fg="#555", bg="#121212", font=("Helvetica", 8, "bold")).pack(pady=(15, 5))
-        self.history_list = tk.Listbox(self, bg="#121212", fg="#EEE", borderwidth=0, highlightthickness=0, 
+        self.history_list = tk.Listbox(self, bg="#121212", fg="#EEE", borderwidth=0, highlightthickness=0,
                                        font=("Helvetica", 10), selectbackground="#121212", height=6)
         self.history_list.pack(fill="both", expand=True, padx=30)
 
-        # 7. Secure Sign Out
-        tk.Button(self, text="Secure Sign Out", command=lambda: controller.show_frame("LoginPage"), 
-                  bg="#121212", fg="#444", bd=0, font=("Helvetica", 9, "underline")).pack(side="bottom", pady=10)
-
-    def create_modern_btn(self, text, color, cmd, parent=None):
-        target = parent if parent else self
-        f = tk.Frame(target, bg=color, cursor="hand2")
-        f.pack(pady=5, padx=40, fill="x")
-        l = tk.Label(f, text=text, fg="white", bg=color, font=("Helvetica", 11, "bold"), pady=12)
-        l.pack()
-        f.bind("<Button-1>", lambda e: cmd())
-        l.bind("<Button-1>", lambda e: cmd())
-        return f
-
-def show_tip_modal(self, amount):
-        """Manipulative Earnin-style tip overlay"""
-        self.modal = tk.Toplevel(self)
-        self.modal.geometry("380x550")
-        self.modal.configure(bg="#1E1E1E")
-        self.modal.transient(self)
-        self.modal.grab_set()
-
-        # 1. Guilt-tripping Header
-        tk.Label(self.modal, text="Pay it Forward", fg="#00D084", bg="#1E1E1E", font=("Helvetica", 20, "bold")).pack(pady=(30, 10))
-        
-        guilt_text = ("Most SwiftPay members tip $5 or more\nto help keep this service interest-free\n"
-                      "for the community.")
-        tk.Label(self.modal, text=guilt_text, fg="#AAA", bg="#1E1E1E", font=("Helvetica", 10)).pack(pady=5)
-
-        # 2. Recommended / Highlighted Tip
-        tk.Label(self.modal, text="RECOMMENDED FOR YOU", fg="#7042F4", bg="#1E1E1E", font=("Helvetica", 8, "bold")).pack(pady=(20, 0))
-        self.create_tip_option("$10 Tip", "#7042F4", 10, amount, is_recommended=True)
-        
-        # 3. Standard Options
-        self.create_tip_option("$5 Tip", "#333", 5, amount)
-        self.create_tip_option("$2 Tip", "#333", 2, amount)
-
-       # --- 4. DASHBOARD PAGE ---
-class DashboardPage(tk.Frame):
-    def __init__(self, parent, controller):
-        super().__init__(parent, bg="#121212")
-        self.controller = controller
-        self.user = controller.user
-        self.current_tip = 0
-
-        # 1. Top Status Notification Bar
-        self.status_bar = tk.Label(self, text="", fg="white", bg="#00D084", font=("Helvetica", 10, "bold"), pady=5)
-        self.status_bar.pack(fill="x")
-        self.status_bar.pack_forget() 
-
-        # 2. Header
-        tk.Label(self, text=f"Welcome back, {self.user.name}", fg="#888", bg="#121212", font=("Helvetica", 10)).pack(pady=(15, 0))
-
-        # 3. Balance Card
-        self.card = tk.Frame(self, bg="#1E1E1E", padx=20, pady=25, highlightthickness=1, highlightbackground="#333")
-        self.card.pack(padx=25, pady=15, fill="x")
-        
-        tk.Label(self.card, text="AVAILABLE TO CASH OUT", fg="#00D084", bg="#1E1E1E", font=("Helvetica", 8, "bold")).pack()
-        self.balance_var = tk.StringVar(value=f"${self.user.balance:,.2f}")
-        self.lbl_balance = tk.Label(self.card, textvariable=self.balance_var, fg="white", bg="#1E1E1E", font=("Helvetica", 32, "bold"))
-        self.lbl_balance.pack()
-
-        # 4. Input Section
-        tk.Label(self, text="Set Amount", fg="#AAA", bg="#121212", font=("Helvetica", 9, "bold")).pack(pady=(5, 5))
-        self.amount_entry = tk.Entry(self, justify="center", font=("Helvetica", 22), bg="#000", fg="#00D084", borderwidth=0, insertbackground="white")
-        self.amount_entry.insert(0, "100")
-        self.amount_entry.pack(pady=5, padx=60, ipady=10)
-
-        # 5. Primary Action Buttons
-        self.create_modern_btn("Cash Out Now", "#7042F4", self.do_loan)
-        self.create_modern_btn("Buy Now, Pay Later", "#333333", self.do_bnpl)
-        self.create_modern_btn("Instant Gamble", "#FF4500", self.do_gamble)
-
-        # 6. Activity Feed
-        tk.Label(self, text="RECENT ACTIVITY", fg="#555", bg="#121212", font=("Helvetica", 8, "bold")).pack(pady=(15, 5))
-        self.history_list = tk.Listbox(self, bg="#121212", fg="#EEE", borderwidth=0, highlightthickness=0, 
-                                       font=("Helvetica", 10), selectbackground="#121212", height=6)
-        self.history_list.pack(fill="both", expand=True, padx=30)
-
-        # 7. Secure Sign Out
-        tk.Button(self, text="Secure Sign Out", command=lambda: controller.show_frame("LoginPage"), 
+        tk.Button(self, text="Secure Sign Out", command=lambda: controller.show_frame("LoginPage"),
                   bg="#121212", fg="#444", bd=0, font=("Helvetica", 9, "underline")).pack(side="bottom", pady=10)
 
     def create_modern_btn(self, text, color, cmd, parent=None):
@@ -208,34 +121,26 @@ class DashboardPage(tk.Frame):
         return f
 
     def show_tip_modal(self, amount):
-        """Manipulative Earnin-style tip overlay"""
         self.modal = tk.Toplevel(self)
         self.modal.geometry("380x550")
         self.modal.configure(bg="#1E1E1E")
         self.modal.transient(self)
         self.modal.grab_set()
 
-        # 1. Guilt-tripping Header
         tk.Label(self.modal, text="Pay it Forward", fg="#00D084", bg="#1E1E1E", font=("Helvetica", 20, "bold")).pack(pady=(30, 10))
-        
         guilt_text = ("Most SwiftPay members tip $5 or more\nto help keep this service interest-free\n"
                       "for the community.")
         tk.Label(self.modal, text=guilt_text, fg="#AAA", bg="#1E1E1E", font=("Helvetica", 10)).pack(pady=5)
 
-        # 2. Recommended / Highlighted Tip
         tk.Label(self.modal, text="RECOMMENDED FOR YOU", fg="#7042F4", bg="#1E1E1E", font=("Helvetica", 8, "bold")).pack(pady=(20, 0))
         self.create_tip_option("$10 Tip", "#7042F4", 10, amount, is_recommended=True)
-        
-        # 3. Standard Options
         self.create_tip_option("$5 Tip", "#333", 5, amount)
         self.create_tip_option("$2 Tip", "#333", 2, amount)
 
-        # 4. Negative Framing for "No Tip"
         tk.Label(self.modal, text="I don't want to support the community", fg="#444", bg="#1E1E1E", font=("Helvetica", 8)).pack(pady=(20, 0))
-        
         f_no = tk.Frame(self.modal, bg="#1E1E1E", cursor="hand2")
         f_no.pack(pady=5)
-        l_no = tk.Label(f_no, text="Skip Tip & Continue", fg="#666", bg="#1E1E1E", 
+        l_no = tk.Label(f_no, text="Skip Tip & Continue", fg="#666", bg="#1E1E1E",
                         font=("Helvetica", 10, "underline"), pady=5)
         l_no.pack()
 
@@ -251,10 +156,9 @@ class DashboardPage(tk.Frame):
         highlight = "#7042F4" if is_recommended else "#333"
         f = tk.Frame(self.modal, bg=highlight, cursor="hand2", padx=2 if is_recommended else 0, pady=2 if is_recommended else 0)
         f.pack(pady=5, padx=50, fill="x")
-        
         l = tk.Label(f, text=text, fg="white", bg=color, font=("Helvetica", 11, "bold"), pady=15)
         l.pack(fill="x")
-        
+
         def select_tip():
             self.current_tip = tip_val
             self.modal.destroy()
@@ -266,15 +170,14 @@ class DashboardPage(tk.Frame):
 
     def do_loan(self):
         try:
-            val = self.amount_entry.get()
-            amt = float(val)
+            amt = float(self.amount_entry.get())
             self.show_tip_modal(amt)
         except ValueError:
             self.show_notification("Invalid Amount", "#FF4500")
 
     def execute_cash_out(self, amt):
-        self.show_notification(f"Processing Transfer...", "#7042F4")
-        
+        self.show_notification("Processing Transfer...", "#7042F4")
+
         def finish():
             total_deduction = self.current_tip
             if self.user.withdraw(total_deduction):
@@ -286,7 +189,7 @@ class DashboardPage(tk.Frame):
                 self.show_notification(f"Success! ${amt} sent to bank.")
             else:
                 self.show_notification("Insufficient funds for tip!", "#FF4500")
-            
+
         self.after(1500, finish)
 
     def show_notification(self, message, color="#00D084"):
@@ -305,95 +208,82 @@ class DashboardPage(tk.Frame):
     def do_bnpl(self):
         try:
             amt = float(self.amount_entry.get())
-            if self.user.withdraw(amt/4):
+            if self.user.withdraw(amt / 4):
                 self.update_ui()
                 self.log_act(f"BNPL Payment: -${amt/4:,.2f}", False)
                 self.show_notification("Payment Confirmed", "#333")
-        except: pass
+        except:
+            pass
 
     def do_gamble(self):
-        """Triggers the FanDuel-style Blackjack mini-game, allowing infinite debt"""
         try:
             amt = float(self.amount_entry.get())
             if amt <= 0:
                 self.show_notification("Enter a bet amount", "#FF4500")
                 return
-            
-            # Allow infinite debt
+            # Allow infinite debt — no balance check
             self.user.balance -= amt
             self.update_ui()
             self.log_act(f"Blackjack Bet: -${amt:,.2f}", False)
-            
             self.open_blackjack(amt)
         except ValueError:
             self.show_notification("Invalid Bet Amount", "#FF4500")
 
     def open_blackjack(self, bet_amount):
-        """Creates the premium FanDuel-inspired Blackjack window"""
         self.bj_window = tk.Toplevel(self)
         self.bj_window.title("SwiftPay Casino")
         self.bj_window.geometry("400x750")
-        self.bj_window.configure(bg="#1A2837") # Dark Slate Blue
+        self.bj_window.configure(bg="#1A2837")
         self.bj_window.grab_set()
 
         self.bet = bet_amount
-        self.session_pnl = 0.0 # Track Profit/Loss for this session
+        self.session_pnl = 0.0
+        self.hands_played = 0  # Track hands for streak manipulation
 
-        # --- TOP HEADER ---
         self.header_frame = tk.Frame(self.bj_window, bg="#1A2837")
         self.header_frame.pack(fill="x", padx=15, pady=15)
 
         stats_frame = tk.Frame(self.header_frame, bg="#1A2837")
         stats_frame.pack(side="left")
-        
+
         self.bj_bal_lbl = tk.Label(stats_frame, text=f"Balance: ${self.user.balance:,.2f}", fg="white", bg="#1A2837", font=("Helvetica", 14, "bold"))
         self.bj_bal_lbl.pack(anchor="w")
 
         self.bj_pnl_lbl = tk.Label(stats_frame, text="Session P/L: $0.00", fg="#AAA", bg="#1A2837", font=("Helvetica", 10))
         self.bj_pnl_lbl.pack(anchor="w")
 
-        # Top Right Exit Button
         exit_btn = tk.Label(self.header_frame, text="✖", fg="#888", bg="#1A2837", font=("Helvetica", 20, "bold"), cursor="hand2")
         exit_btn.pack(side="right")
         exit_btn.bind("<Button-1>", lambda e: self.bj_window.destroy())
 
-        # --- DEALER AREA ---
         self.dealer_card_frame = tk.Frame(self.bj_window, bg="#1A2837")
         self.dealer_card_frame.pack(pady=10)
         self.dealer_score_label = tk.Label(self.bj_window, text=" 0 ", fg="white", bg="#0F1822", font=("Helvetica", 12, "bold"), padx=10, pady=2)
         self.dealer_score_label.pack()
 
-        # --- CENTER POT / CASINO CHIP ---
         self.chip_canvas = tk.Canvas(self.bj_window, width=80, height=80, bg="#1A2837", highlightthickness=0)
         self.chip_canvas.pack(pady=30)
-        
-        # Draw the chip
         self.chip_canvas.create_oval(5, 5, 75, 75, fill="#121D28", outline="#0A84FF", width=4)
         self.chip_canvas.create_oval(15, 15, 65, 65, outline="#0A84FF", width=1, dash=(4, 4))
         self.chip_text = self.chip_canvas.create_text(40, 40, text=f"${self.bet:,.0f}", font=("Helvetica", 14, "bold"), fill="white")
 
-        # --- PLAYER AREA ---
         self.player_card_frame = tk.Frame(self.bj_window, bg="#1A2837")
         self.player_card_frame.pack(pady=10)
         self.player_score_label = tk.Label(self.bj_window, text=" 0 ", fg="white", bg="#0F1822", font=("Helvetica", 12, "bold"), padx=10, pady=2)
         self.player_score_label.pack()
-        
-        # --- ACTION BUTTONS ---
+
         self.btn_frame = tk.Frame(self.bj_window, bg="#1A2837")
         self.btn_frame.pack(side="bottom", pady=40, fill="x", padx=20)
 
-        # Custom buttons to avoid Tkinter's white-on-white text bugs
         self.create_custom_btn(self.btn_frame, "HIT", "#0A84FF", self.bj_hit)
         self.create_custom_btn(self.btn_frame, "STAND", "#D32F2F", self.bj_stand)
 
-        # Post-Game Options (Hidden Initially)
         self.post_game_frame = tk.Frame(self.bj_window, bg="#1A2837")
         self.result_label = tk.Label(self.bj_window, text="", fg="white", bg="#1A2837", font=("Helvetica", 22, "bold"))
-        
+
         self.start_new_hand()
 
     def create_custom_btn(self, parent, text, color, cmd):
-        """Bypasses default Tkinter buttons for crisp, custom UI elements"""
         f = tk.Frame(parent, bg=color, cursor="hand2")
         f.pack(side="left", padx=10, fill="x", expand=True)
         l = tk.Label(f, text=text, fg="white", bg=color, font=("Helvetica", 14, "bold"), pady=15)
@@ -403,33 +293,54 @@ class DashboardPage(tk.Frame):
         return f
 
     def update_header_stats(self):
-        """Updates the top left balance and session profit/loss trackers"""
         self.bj_bal_lbl.config(text=f"Balance: ${self.user.balance:,.2f}")
-        
         pnl_color = "#00D084" if self.session_pnl >= 0 else "#FF4500"
         sign = "+" if self.session_pnl >= 0 else ""
         self.bj_pnl_lbl.config(text=f"Session P/L: {sign}${self.session_pnl:,.2f}", fg=pnl_color)
 
-    def start_new_hand(self):
-        """Deals a fresh hand"""
+    def build_rigged_deck(self):
+        """
+        House-edge deck construction:
+        - First 3 hands (hook phase): deck stacked so player gets strong cards (18-20)
+        - After hand 3: deck stacked so dealer gets strong cards, player gets weak ones
+        - Near-miss engineering: player frequently lands on 17-19 and loses by 1
+        """
         suits = ['♥', '♦', '♣', '♠']
-        ranks = [('2',2), ('3',3), ('4',4), ('5',5), ('6',6), ('7',7), ('8',8), 
-                 ('9',9), ('10',10), ('J',10), ('Q',10), ('K',10), ('A',11)]
-        self.deck = [(r[0], r[1], s) for r in ranks for s in suits] * 4
-        random.shuffle(self.deck)
-        
+        ranks = [('2',2),('3',3),('4',4),('5',5),('6',6),('7',7),('8',8),
+                 ('9',9),('10',10),('J',10),('Q',10),('K',10),('A',11)]
+        full_deck = [(r[0], r[1], s) for r in ranks for s in suits] * 4
+        random.shuffle(full_deck)
+
+        if self.hands_played < 3:
+            # Hook phase: give player a strong starting hand (10+9 or K+9)
+            strong = [c for c in full_deck if c[1] in (10, 9)]
+            weak   = [c for c in full_deck if c[1] not in (10, 9)]
+            # Put two strong cards near the top for player, two weak for dealer
+            rigged = strong[:2] + weak[:2] + strong[2:] + weak[2:]
+            return rigged
+        else:
+            # Grind phase: engineer near-misses — player gets 6+7=13, dealer gets 10+10
+            tens   = [c for c in full_deck if c[1] == 10]
+            smalls = [c for c in full_deck if c[1] in (5, 6, 7, 8)]
+            rest   = [c for c in full_deck if c[1] not in (5, 6, 7, 8, 10)]
+            # Layout: player[0]=small, player[1]=small, dealer[0]=10, dealer[1]=10
+            rigged = smalls[:2] + tens[:2] + tens[2:] + smalls[2:] + rest
+            return rigged
+
+    def start_new_hand(self):
+        self.deck = self.build_rigged_deck()
+
         self.player_hand = [self.deck.pop(), self.deck.pop()]
         self.dealer_hand = [self.deck.pop(), self.deck.pop()]
-        
+
         self.result_label.pack_forget()
         self.post_game_frame.pack_forget()
         self.btn_frame.pack(side="bottom", pady=40, fill="x", padx=20)
-        
+
         self.update_header_stats()
         self.update_bj_display(hide_dealer=True)
 
     def calculate_score(self, hand):
-        """Proper Ace handling (1 or 11)"""
         score = sum(c[1] for c in hand)
         aces = sum(1 for c in hand if c[0] == 'A')
         while score > 21 and aces > 0:
@@ -438,13 +349,10 @@ class DashboardPage(tk.Frame):
         return score
 
     def create_card_ui(self, parent, card_data, is_hidden=False):
-        """Generates visual playing cards"""
         bg_color = "#FFFFFF" if not is_hidden else "#0F1822"
-        
         card = tk.Frame(parent, bg=bg_color, highlightbackground="#000", highlightthickness=1, width=70, height=100)
         card.pack_propagate(False)
         card.pack(side="left", padx=5)
-        
         if not is_hidden:
             rank, _, suit = card_data
             color = "#D32F2F" if suit in ['♥', '♦'] else "#000000"
@@ -457,13 +365,11 @@ class DashboardPage(tk.Frame):
         for widget in self.player_card_frame.winfo_children(): widget.destroy()
         for widget in self.dealer_card_frame.winfo_children(): widget.destroy()
 
-        # Player
         for card in self.player_hand:
             self.create_card_ui(self.player_card_frame, card)
         p_total = self.calculate_score(self.player_hand)
         self.player_score_label.config(text=f" {p_total} ")
-        
-        # Dealer
+
         if hide_dealer:
             self.create_card_ui(self.dealer_card_frame, self.dealer_hand[0])
             self.create_card_ui(self.dealer_card_frame, None, is_hidden=True)
@@ -483,13 +389,14 @@ class DashboardPage(tk.Frame):
 
     def bj_stand(self):
         self.update_bj_display(hide_dealer=False)
-        
+
+        # Dealer hits on soft 17 — standard rule that benefits house
         while self.calculate_score(self.dealer_hand) < 17:
             self.dealer_hand.append(self.deck.pop())
             self.update_bj_display(hide_dealer=False)
             self.bj_window.update()
-            self.bj_window.after(500) 
-        
+            self.bj_window.after(500)
+
         p_score = self.calculate_score(self.player_hand)
         d_score = self.calculate_score(self.dealer_hand)
 
@@ -498,16 +405,21 @@ class DashboardPage(tk.Frame):
         elif p_score > d_score:
             self.bj_end("YOU WIN!")
         elif p_score == d_score:
-            self.bj_end("PUSH (TIE)")
-        else:
+            # Ties go to dealer — this is the primary silent house edge
             self.bj_end("DEALER WINS")
+        else:
+            # Near-miss message to encourage rebetting
+            diff = d_score - p_score
+            if diff <= 2:
+                self.bj_end("SO CLOSE! DEALER WINS")
+            else:
+                self.bj_end("DEALER WINS")
 
     def bj_end(self, message):
-        """Processes final payouts, debt, and shows Rebet button"""
-        self.btn_frame.pack_forget() # Hide action buttons
-        
-        # Payout Logic & Session Tracker
-        if "WIN" in message:
+        self.btn_frame.pack_forget()
+        self.hands_played += 1
+
+        if "YOU WIN" in message:
             self.user.balance += (self.bet * 2)
             self.session_pnl += self.bet
             self.log_act(f"Blackjack Won: +${self.bet * 2:,.2f}", True)
@@ -515,29 +427,42 @@ class DashboardPage(tk.Frame):
             self.user.balance += self.bet
             self.log_act(f"Blackjack Push: Returned ${self.bet:,.2f}", True)
         else:
+            # Loss — no refund, balance already deducted at bet time
             self.session_pnl -= self.bet
-            
-        self.update_ui() # Updates main dashboard
-        self.update_header_stats() # Updates mini-game top-left corner
 
-        # Show Results
-        color = "#00D084" if "WIN" in message else "#FF4500" if "DEALER WINS" in message else "#AAA"
+        self.update_ui()
+        self.update_header_stats()
+
+        is_win = "YOU WIN" in message
+        is_near = "SO CLOSE" in message
+        color = "#00D084" if is_win else "#FF4500" if "DEALER WINS" in message else "#AAA"
         self.result_label.config(text=message, fg=color)
         self.result_label.pack(side="bottom", fill="x", pady=10)
-        
-        # Show Rebet Option
+
+        # Loss-chasing UI: make rebet button larger and more urgent after losses
         self.post_game_frame.pack(side="bottom", pady=20, fill="x", padx=40)
-        self.create_custom_btn(self.post_game_frame, f"REBET ${self.bet:,.0f} & DEAL", "#0A84FF", self.deal_again)
+
+        if is_win:
+            rebet_color = "#0A84FF"
+            rebet_label = f"REBET ${self.bet:,.0f} & DEAL"
+        elif is_near:
+            # Larger, brighter button after a near-miss to exploit loss-chasing
+            rebet_color = "#FF6500"
+            rebet_label = f"▶  ONE MORE — REBET ${self.bet:,.0f}"
+        else:
+            rebet_color = "#0A84FF"
+            rebet_label = f"REBET ${self.bet:,.0f} & DEAL"
+
+        self.create_custom_btn(self.post_game_frame, rebet_label, rebet_color, self.deal_again)
 
     def deal_again(self):
-        """Starts a new round without closing the window"""
-        for widget in self.post_game_frame.winfo_children(): widget.destroy() # Clear old button
-        
+        for widget in self.post_game_frame.winfo_children(): widget.destroy()
         self.user.balance -= self.bet
         self.update_ui()
         self.log_act(f"Blackjack Bet: -${self.bet:,.2f}", False)
         self.start_new_hand()
-        
+
+
 # --- 5. RUN ---
 if __name__ == "__main__":
     app = SwiftPayApp()
